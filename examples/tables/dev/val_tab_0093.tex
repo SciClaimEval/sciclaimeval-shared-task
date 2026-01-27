@@ -1,0 +1,64 @@
+\documentclass[varwidth=598pt]{standalone}
+
+\usepackage{booktabs}      % professional-quality tables
+\usepackage{multirow}      % multi-row cells in tables
+\usepackage{colortbl}      % color for tables (\cellcolor, \rowcolor)
+\usepackage[table]{xcolor} % enhanced colors for tables
+\usepackage{array}         % more flexible column formats (often used)
+\usepackage{tabularx}      % for tables with auto-stretch columns (if used)
+\usepackage{graphicx}      % for images in tables or figure/table floats
+\usepackage{amssymb}       % math symbols
+\usepackage{amsmath}       % math environments
+\usepackage{soul}          % highlighting (used for colored text/cells)
+\usepackage[normalem]{ulem} % underlining, strikethroughs
+\usepackage[T1]{fontenc}   % font encoding
+\usepackage[utf8]{inputenc}% input encoding (legacy, fine for pdflatex)
+\usepackage{microtype}     % better text appearance
+\usepackage{hyperref}      % hyperlinks
+\usepackage{textcomp}      % for extra symbols
+\usepackage{enumitem}      % for compact lists (if used in table notes)
+\usepackage{adjustbox}
+\usepackage{tabu}
+\usepackage{pifont}        % http://ctan.org/pkg/pifont
+\usepackage{bbding}        % \XSolidBrush
+\usepackage{makecell}
+
+\begingroup
+\makeatletter
+\renewcommand{\fnum@table}{}%
+\long\def\@makecaption#1#2{%
+  \vskip\abovecaptionskip
+  \centering #2\par
+  \vskip\belowcaptionskip
+}
+\makeatother
+
+\newcommand{\ex}[1]{\textit{#1}\xspace}
+\newcommand{\class}[1]{\textsf{#1}\xspace}
+\newcommand{\system}[1]{\texttt{#1}\xspace}
+\newcommand{\roberta}{\system{RoBERTa}}
+\newcommand{\cuenb}{\system{CueNB}}
+\newcommand{\z}{\phantom{0}}
+\newcommand{\trevor}[1]{\textcolor{red}{TC: #1}\xspace}
+\newcommand{\footnoteref}[1]{\textsuperscript{\ref{#1}}}
+\newcolumntype{P}[1]{>{\centering\arraybackslash}p{#1}}
+\begin{document}
+\begin{table}
+\centering
+\begin{adjustbox}{max width=\textwidth}
+    \begin{tabular}{p{1.25cm} p{4cm} p{0.75cm}}
+    \toprule    
+    Setting & Example & Mean PPL$\downarrow$  \\
+    \midrule
+        Corpus & [Baseball is a type of sport.] &  434.42 \\
+        \midrule
+        \textit{Default} & [Baseball isn't a type of sport.] & 288.94 \\
+        \textit{Contrasting} & Baseball is a type of sport. [Baseball isn't a type of sport.] & 533.56 \\
+        \textit{Discourse} & Baseball is a type of sport. Therefore, [baseball isn't a type of sport.]  & 477.44  \\
+        \textit{Mask} & MASK is a type of sport. [MASK isn't a type of sport.] & 448.23  \\
+    \bottomrule
+    \end{tabular}
+\end{adjustbox}
+\caption{Table 3: Mean perplexity (PPL) calculated using the \texttt{GPT-J-6B} model. Only the strings enclosed in square brackets are considered during calculation in order to provide a fair comparison with similar token length. For Corpus, PPL is calculated using the provided gold completion.}
+\end{table}
+\end{document}
