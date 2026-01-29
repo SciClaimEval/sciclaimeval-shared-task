@@ -22,6 +22,14 @@ Please refer to the file [here](https://github.com/SciClaimEval/sciclaimeval-sha
 Please prepare your prediction file following the format in [this file](https://github.com/SciClaimEval/sciclaimeval-shared-task/blob/main/examples/task1_pred_format.json).
 
 
+### Information about the Test Set:
+
+- You will receive the input for the test set, but the gold labels are not available.
+The example format is the same as in the file [task1_ground_truth.json](https://github.com/SciClaimEval/sciclaimeval-shared-task/blob/main/examples/task1_ground_truth.json), except that the following keys are missing: label, operation, detail_others, and claim_id_pair.
+
+- This is also the case for the second subtask.
+
+
 ## Subtask 2: Claim Evidence Prediction Task
 
 - Please refer to the file [here](https://github.com/SciClaimEval/sciclaimeval-shared-task/blob/main/examples/task2_ground_truth.json) for an example.
