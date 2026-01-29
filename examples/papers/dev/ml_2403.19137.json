@@ -1,0 +1,672 @@
+{
+  "title": "CLAP4CLIP: Continual Learning with Probabilistic Finetuning for Vision-Language Models",
+  "abstract": "Continual learning (CL) aims to help deep neural networks to learn new knowledge while retaining what has been learned. Recently, pre-trained vision-language models such as CLIP [ 63 ] , with powerful generalization ability, have been gaining traction as practical CL candidates. However, the domain mismatch between the pre-training and the downstream CL tasks calls for finetuning of the CLIP on the latter. The deterministic nature of the existing finetuning methods makes them overlook the many possible interactions across the modalities and deems them unsafe for high-risk CL tasks requiring reliable uncertainty estimation. To address these, our work proposes C ontinual L e A rning with P robabilistic finetuning (CLAP). CLAP develops probabilistic modeling over task-specific modules with visual-guided text features, providing more reliable fine-tuning in CL. It further alleviates forgetting by exploiting the rich pre-trained knowledge of CLIP for weight initialization and distribution regularization of task-specific modules. Cooperating with the diverse range of existing prompting methods, CLAP can surpass the predominant deterministic finetuning approaches for CL with CLIP. Lastly, we study the superior uncertainty estimation abilities of CLAP for novel data detection and exemplar selection within CL setups. Our code is available at https://github.com/srvCodes/clap4clip .",
+  "full_text": [
+    {
+      "section_name": "Introduction",
+      "paragraphs": [
+        "Learning in the real world involves dealing with the ever-changing distributions of task streams and their data [ 6 , 85 , 49 , 26 ] .\nGiven the constraints on resources and privacy, there is also no guarantee on re-training a network on all previously seen data [ 7 ] . Continual learning (CL) aims to learn from such data/task stream without catastrophic forgetting [ 33 , 6 ] of past data/tasks. A challenging CL setup is class-incremental learning, where new classes emerge with new tasks, and at test time, a model must infer from all seen classes without known task IDs [ 48 ] .",
+        "Recent years have seen a surge of pre-trained multi-modal foundation models achieving state-of-the-art performances on several domains [ 63 , 1 , 84 ] .\nOne such example for the vision-language (VL) domain is the\nContrastive Language-Image Pre-training (CLIP) [ 63 ] model. CLIP comes with strong zero-shot generalization ability acquired by learning to match large-scale image-text pairs with contrastive loss [ 56 ] . However, to adapt well to downstream tasks, CLIP must be finetuned on the task-specific data [ 94 , 17 ] . Considering both the need for continually finetuning pre-trained models to streaming tasks and their perks over training from scratch [ 70 ] , our work investigates CL with CLIP.",
+        "An issue with the existing deterministic approaches [ 17 , 94 ] is that these overlook the uncertainties arising from many possible interactions between visual and textual cues. For instance, on the textual side, while a good default hand-crafted prompt for a number of tasks is \u201c A photo of a {class} \u201d, there can be tasks where a more specific prompt can help improve the image-to-text coherence [ 63 ] .\nOn the visual side, images from the same class have diverse range of backgrounds, poses, orientations, etc.\nOverlooking the uncertainties in image-text matching may cause overfitting to the downstream task data and forgetting of the generalizable knowledge [ 36 ] . This has particularly worse implications for CL where we seek to adapt CLIP on a stream of tasks. While some methods model the uncertainties through probabilistic finetuning [ 47 , 12 ] , these remain subpar at CL given: (a) their inaptness to existing prompt-based approaches [ 47 ] , (b) their trading of in-domain performance for generalization [ 12 ] .",
+        "Uncertainty-awareness can further be crucial for CL models deployed in mission-critical settings (healthcare, transport, etc.) as it can help calibrate predictions to reliably assess the models\u2019 predictive confidences [ 39 , 27 ] . Hence, to enhance the usage of pre-trained CLIP models for real-world CL tasks, we design a probabilistic finetuning approach with three properties : A) uncertainty-aware modeling of cross-modal task cues for better generalization; B) compatibility with existing prompt-based finetuning methods [ 70 , 94 , 74 , 29 ] to exploit their task-specific knowledge; C) leveraging the rich pre-trained knowledge of CLIP to further counter forgetting without extra training data.",
+        "To this end, we design a Variational Inference (VI) framework to model the distribution of visual-guided text features (rather than modeling the distribution of either modality alone), thus validating property \\# A . This helps our method implicitly address the biases in the image-text alignment [ 62 , 95 ] (see Fig. 2(b) ). Namely, we design a task-shared visual-guided attention module to encourage the alignment, and then perform specialized forward passes through lightweight task-specific inference modules to learn stochastic factors for CL tasks. To further counter the forgetting in these modules, we propose using the pre-trained language information of CLIP for weight initialization and task distribution regularization (property \\# C ).\nLastly, the plug-and-play nature of our probabilistic fine-tuning method makes it\ncompatible with other model adaption/fine-tuning methods (such as [ 74 ] ) and diverse types of prompts that are hand-crafted [ 63 ] , uni-modal [ 94 ] , multi-modal [ 29 ] , or input-specific [ 74 ] (property \\# B ).\nWe backronymize our finetuning approach as CLAP \u2013 C ontinual L e A rning with P robabilistic finetuning \u2013 for the pre-trained CLIP model.",
+        "Our experiments across several settings show that CLAP 4 CLIP enhances prompt-based finetuning for CLIP and surpasses the predominant deterministic finetuning methods for CL all while sharing a similar resource overhead. To further explore the out-of-the-box perks of CLAP\u2019s probabilistic nature, we study its superior uncertainty quantification capabilities on a proposed post-hoc novel data detection setup and on exemplar selection for CL."
+      ]
+    },
+    {
+      "section_name": "Related work",
+      "paragraphs": [
+        "Continual Learning (CL). The existing CL literature is predominated by three categories of methods: (a) Regularization-based methods [ 33 , 2 , 44 ] alleviate forgetting by punishing changes to the parameters that are important to previous tasks; (b) Architecture-based approaches learn parameters that are specialized for individual tasks either by network expansion [ 14 , 27 ] or by sub-network composition [ 57 , 28 ] ; (c) Rehearsal-based approaches [ 65 , 7 ] rely on storing a fraction of the past task experiences in a memory to train with the current task. Nevertheless, each category has its own flaw \u2013 methods in (a) struggle to discriminate inter-task classes [ 41 ] ; those in (b) often require task oracle during inference and can induce dramatic memory overhead for a larger number of tasks; those in (c) are sensitive to the memory sizes besides being prone to overfitting on the memory samples [ 72 ] . Hence, practical CL calls for combining these. Our work leverages (a) via function-space regularization (Sec. 3.7 ), (b) via task-specific modules (Sec. 3.5 ), and (c) via herding-based replay [ 65 ] (Sec. 4 ).",
+        "Vision-Language Models (VLMs) finetuning. The powerful generalizability of pre-trained VLMs [ 1 , 84 ] like the CLIP [ 63 ] has enabled their zero-shot applications to a range of downstream tasks, including CL [ 70 ] . In practice, their performance on downstream out-of-distribution data remains rather weak [ 79 , 60 ] . For such cases, finetuning on task-specific data is a natural choice [ 79 ] .\nInstead of performing full finetuning on all parameters, some parameter-efficient finetuning methods learn a lightweight feature adapter module for textual and/or visual paths [ 17 , 87 ] . Another line of parameter-efficient finetuning methods learns soft prompts which are a few continuous tokens serving as inputs to the frozen visual and/or textual encoder(s) to capture task-specific information [ 94 , 93 ] . Existing works on CL with pre-trained CLIP have leveraged either [ 74 , 67 ] or both [ 92 ] of these methods. However, such finetuning methods remain deterministic in nature. This imposes an explicit constraint on the modeling of the possible ways in which the visual and the textual semantics interact.",
+        "To address the aforesaid flaw, one could turn to adapting the existing probabilistic finetuning approaches to capture the cross-modal interactions in CL tasks. For instance, [ 47 ] learn the distribution of hand-crafted prompts while [ 12 ] leverage VI to model the distributions of soft prompts conditioned on the input images. Yet these methods are limited in their efficacies. While [ 47 ] is incompatible with conditional prompt learning [ 93 ] , [ 12 ] lags in terms of in-domain performance and computational efficiency. Hence, our work aims to bridge these gaps for probabilistic finetuning all while adapting it for CL."
+      ]
+    },
+    {
+      "section_name": "Methodology",
+      "paragraphs": []
+    },
+    {
+      "section_name": "Preliminaries",
+      "paragraphs": [
+        "Continual Learning (CL). Class-incremental CL [ 48 ] aims to learn from a sequence of T tasks [(C^{1},D^{1}),(C^{2},D^{2}),...,(C^{T},D^{T})] . Each task t\\in[1,T] has its training data D^{t}=\\{(\\mathbf{x}_{1},y_{1}),(\\mathbf{x}_{2},y_{2}),...,(\\mathbf{x}_{k^{t}},y_{k^{t}})\\} , where \\mathbf{x} and y are the input images and labels, respectively from the set of classes C^{t}=\\{c_{1}^{t},c_{2}^{t},...,c^{t}_{n^{t}}\\} . Following [ 44 , 24 , 48 ] , we assume any two task-specific sets of classes to be disjoint: C^{i}\\cap C^{j}=\\emptyset . A neural network with parameters \\phi is then trained on task t using D^{t} to minimize the cross-entropy loss over C^{t} . At test time, the model is evaluated on all seen classes \\bigcup_{i=1}^{t}C^{i} , where the past task predictions are prone to forgetting. As a solution, rehearsal-based methods [ 5 , 80 ] replay past task samples from a memory \\mathcal{M} during training. We use herding [ 78 ] to maintain \\mathcal{M} ."
+      ]
+    },
+    {
+      "section_name": "CLIP with prompt design",
+      "paragraphs": [
+        "CLIP comprises an image encoder f(\\textbf{x}) acting on an image \\mathbf{x}\\in\\mathbb{R}^{3\\times H\\times W} and a text encoder g(\\textbf{t}) acting on a word embedding vector \\mathbf{t}\\in\\mathbb{R}^{(L\\times e)} derived from a text prompt \\mathbf{p}\\in\\mathbb{R}^{((L-1)\\times e)} . Here, H and W are the height and the width of the image, respectively, L is the text length, and e is the text embedding dimension. Both the encoders output a d- dimensional encoding, which are used in the prediction of the class y_{i} of the image as:",
+        "p(y_{i}|\\mathbf{x})=\\frac{\\exp\\big{(}\\langle f(\\mathbf{x})^{T},g(\\textbf{t}_{i})\\rangle/\\tau\\big{)}}{\\sum_{c=1}^{|C^{t}|}\\exp\\big{(}\\langle f(\\mathbf{x})^{T},g(\\textbf{t}_{c})\\rangle/\\tau\\big{)}},\\vspace{-0.1cm} (1)",
+        "where \\tau is a learnable temperature parameter, \\langle\\cdot,\\cdot\\rangle is the cosine similarity, and \\mathbf{t}_{c}=[\\mathbf{p},\\mathbf{e}_{c}] is the result of adding a class-specific word embedding \\mathbf{e}_{c} to the prompt \\mathbf{p} .\nThe textual encoding g(\\mathbf{t}_{c}) \u2019s for all classes are used as the weights of a linear classifier. In CL, g(\\mathbf{t}_{c}) encodes the class names seen until task t .\nEq. ( 1 ) thus forms contrastive training criteria for the text and visual modalities, whose rich representation allows pre-trained CLIP to be used for zero-shot classification through hard prompt templates, i.e., \\mathbf{p}^{c}= \u201c A photo of a {c th class} \u201d."
+      ]
+    },
+    {
+      "section_name": "CLIP finetuning with soft prompts",
+      "paragraphs": [
+        "To improve the CLIP performance on a downstream task t , prompt learning employs soft prompts as a set of learnable vector tokens \\mathbf{p}=\\{\\mathbf{p}^{1},\\mathbf{p}^{2},...,\\mathbf{p}^{L}\\} . CoOp [ 94 ] shares \\mathbf{p} with all classes and averages them to use in t . MaPLe [ 29 ] learns multi-modal prompts by employing two such token sets \\mathbf{p}_{v} and \\mathbf{p}_{t} until the J -th layers of the vision and the text encoders of CLIP, respectively. AttriCLIP [ 74 ] selects input-conditioned tokens \\{\\{\\mathbf{p}^{j}\\}_{1\\leq j\\leq L}|\\mathbf{x}_{k}\\} . Learning \\mathbf{p} (with frozen CLIP weights) thusly helps encode class/modality/instance-conditioned context for a given task."
+      ]
+    },
+    {
+      "section_name": "CLIP finetuning with adapters",
+      "paragraphs": [
+        "Adapter-based methods, e.g . , CLIP-Adapter [ 17 ] , learn a lightweight adapter module over the text and/or visual features of the frozen CLIP model. With a text adapter A_{t} , the updated text encoder features from Eq. ( 1 ) can now be rewritten (with a slight abuse of notation) as:",
+        "g(\\mathbf{t}_{i})=\\alpha A_{t}(g(\\mathbf{t}_{i}))+\\beta g(\\mathbf{t}_{i}),\\vspace{-0.1cm} (2)",
+        "where \\alpha and \\beta control the strength of the residual connection between the adapted and the pretrained features, e.g . , \\beta=1-\\alpha in [ 17 ] .\nUnlike soft prompts, however, the gradients of the adapter do not back-propagate through all the text encoder layers. This gives them a computational edge in training."
+      ]
+    },
+    {
+      "section_name": "Probabilistic modeling and inference in CLAP 4 CLIP",
+      "paragraphs": [
+        "In Sec. 3.3 - 3.7 , we develop our CLIP-based probabilistic finetuning model with a variational inference (VI) framework, as shown in Fig. 1 . We start by introducing a basic prediction-aware latent variable model for CLAP 4 CLIP in this section."
+      ]
+    },
+    {
+      "section_name": "Prediction-aware variational modelling",
+      "paragraphs": [
+        "We are interested in modeling the stochastic processes that generate the labels y for the inputs \\mathbf{x} of a CL task t . To this end, we assume a prior distribution p_{\\chi} over the text features \\{p_{\\chi}(\\mathbf{t}_{c})\\}_{c=1}^{C} . In the feature space, we use the reparameterization trick [ 32 ] to represent \\mathbf{t}_{c}(\\mathbf{p})\\sim p_{\\chi}(\\mathbf{t}_{c}(\\mathbf{p})) as a linear combination of the deterministic text features g(\\mathbf{t}_{c}) and a stochastic latent variable z\\sim p_{\\chi} , which can be readily plugged into Eq. ( 1 ):",
+        "\\mathbf{t}_{c}(\\mathbf{p}) =g(\\mathbf{t}_{c}(\\mathbf{p}))+z\\mid z\\sim p_{\\chi}, (3a) p(y_{i}|\\mathbf{x}) =\\int_{\\chi}\\frac{\\exp\\big{(}\\langle f(\\mathbf{x})^{T},\\mathbf{t}_{c}(\\mathbf{p})\\rangle\\big{)}}{\\sum_{c=1}^{|C^{t}|}\\exp\\big{(}\\langle f(\\mathbf{x})^{T},\\mathbf{t}_{c}(\\mathbf{p})\\rangle\\big{)}}p(p_{\\chi}(\\mathbf{t}_{c}(\\mathbf{p})))d\\chi, (3b)",
+        "where g(\\cdot) is defined in Eq. ( 2 ). By modeling the generative processes behind the inputs,\nEq. ( 3b ) injects data-driven uncertainties into the predictions. It also offers us further advantages over other variational frameworks, such as [ 12 ] .\nFirst, as the latent variable z is used to infer the logits, it favors generalization by encoding prediction-aware information. Second, Eq. ( 3b ) is prompt-agnostic as the text features could be derived from any existing soft [ 93 , 74 , 29 ] or hard [ 70 , 17 ] prompt-based method. Third, defining the distribution over the encoder outputs rather than the prompts helps inherit the computational efficiency of adapters.",
+        "To deal with the intractability of the marginal likelihood in Eq. ( 3b ), one could optimize for an evidence lower bound (ELBO) using a variational posterior q_{\\phi} that matches the prior p_{\\chi} based on the KL-divergence loss \\mathbb{D}_{\\text{KL}} :",
+        "\\log p(y|\\mathbf{x})\\geq\\mathbb{E}_{q_{\\phi}(z|\\mathbf{t}_{c})}[\\log p(y|\\mathbf{x},z)]-\\mathbb{D}_{KL}\\big{(}q_{\\phi}(z|\\mathbf{t}_{c})\\|p_{\\chi}\\big{)}",
+        "Following standard practices [ 32 , 18 ] , q_{\\phi} can be modeled as a Gaussian distribution \\mathcal{N}(\\mu(\\mathbf{t}_{c}),\\sigma(\\mathbf{t}_{c})) whose mean \\mu and standard deviation \\sigma are parameterized by linear adapter layers \u2013 we thus refer to [\\mu;\\sigma] as probabilistic adapter. A simple choice for the static prior p_{\\chi} is \\mathcal{N}(\\mathbf{0},\\mathbf{I}) . Lastly, a finite set of Monte-Carlo (MC) samples \\{z_{m}\\}_{m=1}^{M} can be drawn from the posterior by reparameterization [ 32 ] .",
+        "However, finetuning adapters for CL is not straightforward. Namely, we have the overhead of search for the dataset-specific residual ratio \\alpha (see Eq. ( 2 )) [ 17 , 87 ] . This has particularly worse implications for a probabilistic adapter like ours, where a too large \\alpha can inject enough noise to corrupt the pre-trained representations to the point of catastrophic forgetting (see Fig. 2(a) ). To preserve our property \\# B (Sec. 1 ) for backward compatibility with existing prompting techniques, we first seek to have no additional overhead of hyperparameter search for the residual ratio. Subsequently, we use \\alpha=\\beta=1 through our work."
+      ]
+    },
+    {
+      "section_name": "Cross-modal feature alignment",
+      "paragraphs": [
+        "To investigate the source of catastrophic forgetting in finetuning methods, we study how CL effects the cross-modal deviation [ 53 ] between the text and the image features of CLIP.\nHere, we consider two basic CL models: the CoOp [ 94 ] and the CoOp with a CLIP-Adapter [ 17 ] .\nThen, for the base task ( t=1 ) test samples of CIFAR100, we compute the average of the Rotation Angle Matrix (RAM) [ 53 ] using the CL models\u2019 frozen visual f(\\mathbf{x}) and learnable textual g(\\mathbf{t}_{c}(\\mathbf{p})) features at each incremental test step.\nFig. 2(b) shows the deviation of the learned textual features from their (frozen) visual counterparts for the CoOp. This implies that the cross-modal retrieval performance of CLIP finetuned with learnable prompt deteriorates with incremental training. Moreover, a simple adapter (CoOp + Adapter) does not remedy the cross-modal deviation."
+      ]
+    },
+    {
+      "section_name": "Modelling with visual-guided text features",
+      "paragraphs": [
+        "To alleviate the cross-modal deviation due to incremental training, we consider explicit enriching of communication among the encoders\u2019 features. To this end, we adopt a standard transformer-styled decoder block [ 71 ] as a visual-guided attention (VGA) module that refines the task-specific text features based on the visual features as context. While in a non-CL setup, the VGA module has been shown to guide the text features to attend to the informative per-pixel spatial features (obtained before global average-pooling in a ViT [ 13 ] ), here we use the globally pooled visual features of the ViT for guiding the text features. This setting reflects our primary motivation for aligning the text features which we can later employ for variational modelling. Further, using globally pooled visual features favors the computational efficiency of our framework for large CL datasets where attending to per-pixel spatial features can incur much higher latency (App. 8.3 ).",
+        "Leveraging the task-specific text features g(\\mathbf{t}_{c}^{t}) as queries Q and the visual global context f(\\mathbf{x}) as keys K and values V , the VGA performs context-context self-attention followed by context-query cross-attention. To eliminate the influence of the queries from other tasks, a naive strategy is to perform specialized VGA forward passes [ 14 ] with task-specific query. Instead, we replace several such costly passes with a single pass. To do so, we exploit the global nature of our context and mask out (set to -\\infty ) all inter-task connections in the query using a target mask. This ensures that only the task-specific text features in the query undergo self-attention while the entire query cross-attends to the visual context:",
+        "\\begin{split}O&=\\{O^{k}\\}_{k=1}^{t}\\ &=\\{\\hat{\\mathbf{t}}_{c}^{k}\\}_{k=1}^{t}\\ &=VGA\\big{(}Q=\\{\\mathbf{t}_{c}^{k}\\}_{k=1}^{t},K=V=f(\\mathbf{x})\\big{)},\\end{split} (5)",
+        "where O is the set of task-specific visual-guided text features \\hat{\\mathbf{t}}_{c}^{t} . We fuse the original task-specific text features \\mathbf{t}_{c}^{t} to derive the task embeddings \\tilde{\\mathbf{t}}_{c}^{t} :",
+        "\\tilde{\\mathbf{t}}_{c}^{t}=\\hat{\\mathbf{t}}_{c}^{t}+\\mathbf{t}_{c}^{t}.\\vspace{-0.3cm} (6)"
+      ]
+    },
+    {
+      "section_name": "Task-specific distribution encoders",
+      "paragraphs": [
+        "Instead of feeding the concatenated text encoding \\{\\tilde{\\mathbf{t}}_{c}^{1},\\tilde{\\mathbf{t}}_{c}^{2},...,\\tilde{\\mathbf{t}}_{c}^{t}\\} to one shared adapter q_{\\phi} , we maintain task-specific encoders \\{q_{\\phi}^{1},q_{\\phi}^{2},...,q_{\\phi}^{t}\\} ; each comprising a probabilistic adapter to parameterize the t- th task-specific posterior distribution \\mathcal{N}(\\mu^{t},\\sigma^{t}) over its task embeddings \\tilde{\\mathbf{t}}_{c}^{t} :",
+        "\\{z^{t}_{m}\\}_{m=1}^{M}\\sim q_{\\phi}^{t}(z|\\tilde{\\mathbf{t}}_{c}^{t})=\\mathcal{N}\\big{(}\\mu^{t}(\\tilde{\\mathbf{t}}_{c}^{t}),\\sigma^{t}(\\tilde{\\mathbf{t}}_{c}^{t})\\big{)}, (7)",
+        "where \\{z^{t}_{i}\\}_{m=1}^{M} are the M task-specific MC samples. Task-specific encoders help us sample latent variables that are more discriminative across tasks. This is depicted in Fig. 3 using the cosine distance between the embeddings of class-specific samples. With task-specific encoders (right), the cross-task class centroids are further apart than those with one global encoder (left).",
+        "During each incremental training step ( t>1) , we keep the past task encoders frozen. Lastly, to reduce the forgetting of past task encoders, we follow other parameter-isolation techniques [ 14 , 5 , 82 ] to finetune on a class-balanced dataset of new data and rehearsal data \\mathcal{M} at the end of each incremental training step ( t>1 ). We refer to this as memory consolidation training (see App. 8.2 )."
+      ]
+    },
+    {
+      "section_name": "Alleviating forgetting with language-aware CLIP knowledge",
+      "paragraphs": [
+        "Finetuning methods are prone to trading generalization for downstream task performances [ 94 , 93 ] . On the contrary, a pre-trained CLIP with hand-crafted prompts has strong generalizability. To alleviate forgetting ( i.e . , losing generalization) in CL, we propose to leverage the rich language information captured by the text encoder with hand-crafted prompts. In the following, we assume \\{\\mathbf{t}_{y}^{h,l}\\in\\mathbb{R}^{d}\\}_{l=1}^{L} to be the features corresponding to the L hand-crafted textual prompts for the class y\\in C^{t} ."
+      ]
+    },
+    {
+      "section_name": "Weight initialization",
+      "paragraphs": [
+        "An informed\nweight initialization can help bridge the stability gap [ 37 ] in CL by stabilizing the learning for new task components over random initialization [ 20 ] . We thus leverage the t- th task text features \\{\\mathbf{t}_{y}^{h,l}\\}_{l=1}^{L} to initialize the weights \\mathbf{w}_{t}^{\\mu},\\mathbf{w}_{t}^{\\sigma}\\in\\mathbb{R}^{d\\times d} of our t- th task mean and std. dev. modules. Let \\mathbf{s}_{\\mu},\\mathbf{s}_{\\sigma}\\in\\mathbb{R}^{|C^{t}|\\times d} be the mean and the std. dev. of the L text features. We initialize \\mathbf{w}_{t}^{\\mu} and \\mathbf{w}_{t}^{\\sigma} as:",
+        "\\mathbf{w}_{t}^{\\mu}=\\frac{1}{d}\\langle\\mathbf{s}_{\\mu},\\mathbf{s}_{\\mu}^{T}\\rangle,\\mathbf{w}_{t}^{\\sigma}=\\frac{1}{d}\\langle\\mathbf{s}_{\\sigma},\\mathbf{s}_{\\sigma}^{T}\\rangle"
+      ]
+    },
+    {
+      "section_name": "Past-task distribution regularization",
+      "paragraphs": [
+        "The functional spaces of the past task distributions are prone to forgetting in CL. Though replay helps alleviate the forgetting up to a certain degree, repeated training on the memory samples can lead to overfitting on these [ 72 , 43 ] .\nTo address this, previous works [ 27 , 58 ] exploit functional priors for regularizing the visual space alongside memory replay. Here, we propose regularizing the past task distributions in the textual space by using the features \\{\\mathbf{t}_{y}^{h,l}\\}_{l=1}^{L} to distill the past task samples \\big{\\{}\\{z^{i}_{m}\\}_{m=1}^{M}\\big{\\}}_{i=1}^{t-1} . Namely, the probability of z^{t}_{m} belonging to class y\\in C^{t} is:",
+        "P_{KD}(y|z^{t}_{m})=\\frac{1}{M}\\sum_{m=1}^{M}\\frac{1}{L}\\sum_{l=1}^{L}\\frac{\\exp\\big{(}\\langle\\mathbf{t}_{y}^{h,l},z^{t}_{m}\\rangle\\big{)}}{\\sum_{c=1}^{|C^{t}|}\\exp\\big{(}\\langle\\mathbf{t}_{c}^{h,l},z^{t}_{m}\\rangle\\big{)}}",
+        "The resulting language-aware distillation loss using P_{\\text{KD}} is thus given as:",
+        "\\mathcal{L}_{KD}=-\\sum_{t=1}^{T-1}\\sum_{c=1}^{|C^{t}|}\\log P_{KD}(c|z^{t})y_{c},\\vspace{-0.08in} (10)",
+        "where \\mathcal{L}_{\\text{KD}} is a data-free ( i.e. , no training samples required) text-to-text distribution regularizer that encourages the latent variables to stay close to the text features from hand-crafted prompts.\nLastly, as \\mathcal{L}_{\\text{KD}} acts on the functional space of past tasks, this sets apart our setting from the non-CL setup of Bulat et al . [ 4 ] where the language-aware distillation loss regularizes the vector space."
+      ]
+    },
+    {
+      "section_name": "Training objective and framework overview",
+      "paragraphs": []
+    },
+    {
+      "section_name": "Approximate ELBO",
+      "paragraphs": [
+        "Unlike Eq. ( 4 ), the task-specific encoders q_{\\phi}^{t} now serve to approximate the intractable task-specific functional posteriors. The resulting ELBO (see App. 10 for derivation) with the static prior p_{\\chi}=\\mathcal{N}(\\mathbf{0},\\mathbf{I}) is:",
+        "\\small\\begin{split}\\log p(y^{1:T}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})\\geq\\sum_{t=1}^{T}&\\bigg{[}\\mathbb{E}_{q_{\\phi}^{t}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}\\Big{[}\\log p_{\\theta}(y^{t}|z^{t},\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})\\Big{]}\\ &\\;\\;\\;\\;-\\mathbb{D}_{KL}\\big{(}q_{\\phi}^{t}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})\\|p_{\\chi}(z^{t})\\big{)}\\bigg{]}.\\end{split} (11)"
+      ]
+    },
+    {
+      "section_name": "Integrated objective",
+      "paragraphs": [
+        "Denoting the loss weights by \\lambda and \\gamma , our total loss consists of the following three terms:",
+        "\\mathcal{L}=\\mathcal{L}_{CE}-\\lambda\\mathbb{D}_{KL}+\\gamma\\mathcal{L}_{KD},\\vspace{-0.1in} (12)",
+        "where the cross-entropy \\mathcal{L}_{\\text{CE}} and the prior-matching \\mathbb{D}_{\\text{KL}} terms act on the outputs of all task encoders while the distribution regularization term \\mathcal{L}_{\\text{KD}} acts only on the past task encoders during finetuning. \\lambda is set to 0.001. As the past task encoders are trainable only during the memory consolidation training stage, \\lambda for these is set to 0 during training. \\gamma is set to 15."
+      ]
+    },
+    {
+      "section_name": "Algorithm overview",
+      "paragraphs": [
+        "Algo. 1 outlines the pseudo-code of a forward pass of CLAP 4 CLIP at the t- th task test step. Here, a test image is to be classified among one of the seen classes \\{1,...,|C^{t}|\\} . Our method executes the computationally heavy VGA layers only once. The task-specific VGA outputs are passed through their respective task encoders. By limiting the quadratic complexity of the VGA module pass, our method induces minimal time overhead. Moreover, by only expanding the task encoder per task, our memory overhead is negligible compared to the large backbone of the pre-trained CLIP model (see Fig. 5(b) )."
+      ]
+    },
+    {
+      "section_name": "Experiments",
+      "paragraphs": []
+    },
+    {
+      "section_name": "Results",
+      "paragraphs": [
+        "We report performances in Table 1 on all five datasets. Our method consistently achieves the best results among all the methods compared. Notably, on CIFAR100 and ImageNet100, our variants using the hand-crafted and multi-modal prompts outperform the others. On the challenging ImageNet-R setup with significant intra-class diversity, our method can better leverage the instance-conditioned prompt knowledge of AttriCLIP [ 74 ] , which helps it outperform PROOF [ 92 ] by 1.46\\% in terms of average accuracy. On CUB200 and VTAB, sharing the prompt pool among all tasks gives CoOp [ 94 ] an edge over other baselines. Leveraging CoOp offers us the best results on these, while surpassing PROOF, which also builds upon CoOp with task-specific soft prompts. Lastly, Fig. 4 shows that our variants perform consistently better than their baseline prompting methods throughout the incremental steps."
+      ]
+    },
+    {
+      "section_name": "Cross-Datasets Continual Learning (CDCL)",
+      "paragraphs": [
+        "To simulate real-world settings with long sequence of tasks and large distribution shifts, the CDCL setting [ 74 ] trains a model sequentially on ImageNet100 and CIFAR100 ( i.e. , on 20 tasks), and evaluates it jointly on these. For a fair comparison with [ 74 ] , we adopt the ViT-L/14 as our CLIP backbone and set the train/test batch size to 32. All other settings remain the same as in Sec. 4.1 . Table 2 reports the last task accuracy of different methods. While all our variants improve the CDCL performances of their respective baselines, combining ours with AttriCLIP [ 74 ] leads to the most gains. This further suggests that our framework can reliably leverage the diverse nature of learned prompts to inherit their setting-specific advantages."
+      ]
+    },
+    {
+      "section_name": "Ablation Studies",
+      "paragraphs": []
+    },
+    {
+      "section_name": "Influence of components.",
+      "paragraphs": [
+        "We ablate the importance of different components of CLAP 4 CLIP in Table 3 . On top of the base CLIP model, we first train a probabilistic encoder. Adding the VGA module and the memory consolidation training stage helps us achieve much stable performances while countering forgetting. We then apply task-specific encoders which makes the centroids of the class-specific latent variable more separable (see Fig. 3 ) thus improving the last task accuracy by 2.21%. Language-aware weight initialization and regularization help improve the last task accuracies by 0.78% and 0.23%, respectively. Weight initialization further helps us tackle the stability gap [ 37 , 20 ] (see App. 8.5.4 for more ablations on language-aware components)."
+      ]
+    },
+    {
+      "section_name": "Effect of forgetting on task heads",
+      "paragraphs": [
+        "We ablate the task head predictions over the test set of each task on CIFAR100 (see App. 8.5.1 for more details). Fig. 9(a) shows that the past task heads are relatively less accurate at identifying their respective test instances. However, their amount of forgetting do not necessarily correspond to the task order. This is further evident in Fig. 9(b) where at each step, the past task heads lag unevenly in performance. The uneven performances could be because of the role of task semantics behind forgetting [ 64 , 40 ] ."
+      ]
+    },
+    {
+      "section_name": "Probabilistic vs Deterministic inference",
+      "paragraphs": [
+        "To understand our probabilistic inference modules further, we examine their performance against the deterministic variant of ours (Ours w/o VI). Table 1 shows that our probabilistic inference module consistently outperforms its deterministic counterpart in terms of Avg and Last accuracy. This emphasizes the advantages of considering uncertainty in finetuning. We further introspect the effects of the number of layers for the VGA and task encoder modules in our framework in App. 8.5.2 ."
+      ]
+    },
+    {
+      "section_name": "Sensitivity to the number of Monte Carlo (MC) samples",
+      "paragraphs": [
+        "We vary the number of MC samples M from 1 to 50. In Fig. 5(a) , the accuracy is poorer in range [1,10] , grows in range [10,20] , and saturates thereafter. Hence, we set M to 20 for all our experiments."
+      ]
+    },
+    {
+      "section_name": "More informed priors",
+      "paragraphs": [
+        "To study the role of a more informed prior in our VI framework, we study three choices of priors to be used in the prior-matching term of eq. ( 11 ): (a) the static (standard normal) prior, (b) the language-aware prior using the distribution obtained from the task encoders using the hand-crafted prompts\u2019 features \\{\\mathbf{t}_{y}^{h,l}\\}_{l=1}^{L} (sec 3.6 ), (c) the data-driven prior using a randomly chosen subset of a training minibatch as the context set to condition the prior on (see App. 11 for more details). Table 4 shows that while (b) and (c) slightly improve over (a) in terms of accuracies and forgetting (BwT), these come at the cost of poorer model calibration and longer runtime per iteration."
+      ]
+    },
+    {
+      "section_name": "Parameter analyses",
+      "paragraphs": [
+        "The additional parameters in CLAP 4 CLIP come from the shared VGA module and the task-specific encoders. For a ViT-B/16 backbone of output dimension d=512 on CIFAR100, the VGA module contains 4,204,032 parameters. The mean and the std. dev. layers for 10 tasks have d\\times d parameters each, i.e., 524,2880 parameters. Hence, the CLAP 4 CLIP has 9.5 million extra parameters, which is negligible compared to the pre-trained CLIP with \\approx 150 million parameters. We report the parameter counts in fig. 5(b) ."
+      ]
+    },
+    {
+      "section_name": "Time analyses",
+      "paragraphs": [
+        "We investigate the inference time per iteration for different methods. As shown in Table 18 , our variants need more inference time than other finetuning methods for the performance gains. The increased time comes mainly from the VGA and from inferring the M latent variables."
+      ]
+    },
+    {
+      "section_name": "Added utilities of probabilistic finetuning",
+      "paragraphs": [
+        "We study the out-of-the-box utilities of CLAP 4 CLIP\u2019s uncertainty quantification (UQ) capabilities. Our motivation for these is not to achieve state-of-the-art performance but to highlight the perks of probabilistic modeling in scenarios where the deterministic CL finetuning methods struggle."
+      ]
+    },
+    {
+      "section_name": "Post-hoc novel data detection (PhNDD)",
+      "paragraphs": [
+        "PhNDD uses a pre-trained classification model to identify novel data based on the output confidence [ 83 , 21 ] . For CL, this can help discern the arrival of new tasks, expand the network, etc. To evaluate the PhNDD capabilities of models within a CL setup, we design a simple setting. Namely, at all but the last test step, we treat the test data from the past and the current tasks as seen while those from all future tasks as novel . We then use FPR95, AUROC [ 11 ] , and AUPR [ 66 ] scores as our performance metrics (see App. 8.6 for more details). We average these metrics over all but last incremental test steps.",
+        "To quantify the output confidence, we rely on the Energy score [ 45 ] given its aptness for pre-trained models. Table 5 compares the averaged PhNDD performances. Our probabilistic models enhance the PhNDD capabilities of their underlying prompting frameworks. Lastly, the inferior results of the deterministic ( i.e. , w/o VI) versions of our models imply that considering uncertainty-awareness for PhNDD helps us maintain richer and more diverse features [ 88 ] ."
+      ]
+    },
+    {
+      "section_name": "Exemplar selection",
+      "paragraphs": [
+        "To study uncertainty-based exemplar selection, we first employ entropy of the output softmax distributions as our selection criteria [ 6 ] . Table 6 shows the efficacy of entropy-based rehearsal for our method, where other deterministic methods lag behind due to their inconsistent UQ capabilities. Next, we employ the energy [ 45 ] and the variance of softmax distributions of the M predictions as our selection criterion, and contrast these against other criteria proposed in [ 6 ] . Figure 6 shows that variance-based exemplar selection outperforms random, and is only second to iCaRL [ 65 ] in terms of Last accuracy. Lastly, we note that deterministic finetuning methods are inherently limited at leveraging variance for exemplar selection."
+      ]
+    },
+    {
+      "section_name": "Conclusion",
+      "paragraphs": [
+        "In this paper, we propose CLAP 4 CLIP, a probabilistic finetuning method for learning task-specific distributions over visual-guided textual features. Our model shares the visual-guided text alignment module across all tasks while adding lightweight task-specific encoders to learn fine grained task distributions. Besides leading to little memory overhead, this architecture is compatible with several prompt-tuning based methods thus helping us inherit their respective perks on different CL settings. Our experiments show the superior results of CLAP 4 CLIP across several datasets and settings. We conclude with two out-of-the-box utilities of our method wherein existing continual learning methods lag: post-hoc novel data detection and uncertainty-based exemplar selection."
+      ]
+    },
+    {
+      "section_name": "Future research directions",
+      "paragraphs": [
+        "Few potential directions of research for CLAP 4 CLIP include the design of: (a) parameter-efficient adapters [ 25 ] for very large CL settings; (b) better regularization techniques to alleviate forgetting; and (c) more informed [ 9 ] yet computationally efficient priors for inference. Similarly, along the direction of alleviating forgetting and mitigating the stability gap [ 37 , 20 ] , it would be interesting to see how class-specific prompts generated by pre-trained Large Language Models (LLMs) can be exploited to obtain task-relevant language-aware CLIP knowledge while preserving the zero-shot transfer ability of the learned prompts (see App. table 19 for a preliminary investigation). Lastly, we consider applying CLAP 4 CLIP to more sophisticated Vision-Language tasks [ 68 ] as another possible direction for research (see App. table 20 for a preliminary investigation). We elaborate further on each of these directions in App. 9 ."
+      ]
+    },
+    {
+      "section_name": "Experiments and Benchmarks",
+      "paragraphs": []
+    },
+    {
+      "section_name": "Datasets",
+      "paragraphs": [
+        "We evaluate our method on five datasets, the details of which are reported in Table 7 . Following Zhou et al . [ 92 ] , we shuffle the order of training classes for all but the VTAB dataset with the random seed 1993.\nWhile the original VTAB [ 86 ] includes 19 evaluation tasks from three categories ( natural , specialized , and structured ) and their respective sub-domains, we rely on the five datasets cross-domain class-incremental subset proposed in SimpleCIL [ 91 ] . The five datasets (used in the same streaming order) include Resisc45 [ 8 ] , DTD [ 10 ] , Pets [ 59 ] , EuroSAT [ 22 ] , and Flowers [ 54 ] . To make the classes emerge from domain to domain, we do not shuffle the class order for VTAB."
+      ]
+    },
+    {
+      "section_name": "Exemplar selection",
+      "paragraphs": [
+        "Following [ 65 , 24 ] , we employ the herding algorithm [ 78 ] to choose the exemplars for our main experiments. Following the previous works [ 90 , 92 ] , we rely on two typical methods to populate the memory:",
+        "Fixed memory budget maintains a static memory \\mathcal{M} with K instances. Upon having seen |\\mathcal{Y}_{b}| number of classes after an incremental training stage, the model selects \\frac{K}{|\\mathcal{Y}_{b}|} exemplars per class.",
+        "Expandable exemplar set dynamically expands the memory \\mathcal{M} with the arrival of more incremental tasks. After each incremental training stage, the model here stores |\\mathcal{Y}_{b}|\\times k_{c} exemplars, where k_{c} is the number of exemplars per class.",
+        "For CIFAR100, ImageNet100 and VTAB, given their lesser number of classes, we employ the first policy, and keep a total of 2,000, 1,000, and 1,000 exemplars, respectively. This amounts to the respective sub-totals of 20 and 10 exemplars per class after the last incremental stage. We choose these sizes for a straightforward comparison with the existing works, i.e., PROOF [ 92 ] for CIFAR100 and AttriCLIP [ 74 ] for ImageNet100. For VTAB, the chosen memory size reflects the fact that we have only 1,796 training instances in total (see Table 7 ). For ImageNet-R and CUB200 with 200 classes each, we adopt the second policy and store 20 exemplars per class."
+      ]
+    },
+    {
+      "section_name": "Hyperparameter selection and tuning",
+      "paragraphs": [
+        "To the end goal of obtaining task-agnostic hyperparameters [ 15 ] , we tuned our hyperparameters using a validation set comprising 10\\% of the CIFAR-100 training dataset. Similar to [ 14 ] , performing the hyperparameter search only on the CIFAR100 setup helps us avoid optimizing for the number of tasks while generalizing across all our other setups. Table 8 shows the candidate values for the hyperparameter grid search and their best chosen values. Tables 9 , 10 , 11 , and 12 report the last task accuracy scores (Last) corresponding to the hyperparameter search for the number of training epochs, the number of finetuning epochs, the coefficient \\gamma and the coefficient \\lambda , respectively. Fig. 5(a) in the main paper reports the accuracy and the runtimes for the different number of MC samples M . We will release the full source code upon the acceptance of our paper. Training for memory consolidation. To alleviate the forgetting of past tasks, we finetune on the class-balanced dataset of new data and rehearsal data \\mathcal{M} at the end of each incremental training step ( t>1 ) [ 24 , 14 ] . Following other well-established parameter-isolation CL algorithms [ 14 , 5 , 82 ] , we freeze the past task encoders during the normal training. This helps us avoid knowledge interference from the dominant new task training samples. During the memory consolidation training stage, we optimize all the task encoders while freezing the task-shared VGA module parameters."
+      ]
+    },
+    {
+      "section_name": "Latency comparison for VT-CLIP styled VGA vs Ours",
+      "paragraphs": [
+        "We compare the performance of VT-CLIP styled VGA with Ours. To align the text features with the image features, the former uses per-pixel spatial features obtained from the ViT prior to global pooling while we use the globally pooled features. Table 13 shows that VT-CLIP styled VGA achieves similar accuracy as ours while incurring \\approx 6\\times higher inference time."
+      ]
+    },
+    {
+      "section_name": "Results",
+      "paragraphs": []
+    },
+    {
+      "section_name": "Performance evolution",
+      "paragraphs": [
+        "To complement the results in Table 1 , Fig. 8 compares the accuracy of different methods at each evaluation step across all datasets. Our major conclusions are briefed as follows. A) The base task performance of CLAP 4 CLIP (ours) is consistently higher than other methods including the state-of-the-art PROOF [ 92 ] . This suggests that our probabilistic finetuning framework is effective for general downstream tasks in a non-incremental setting. B) For the CL settings in Table 1 where either of the CLAP 4 CLIP variants achieve the best performances, their performance curves also consistently retain superior results across all evaluation steps. This validates the effectiveness of our method at tackling forgetting. C) Similar to Zhou et al . [ 92 ] , we notice that CLAP 4 CLIP achieves a significant performance improvement over vision-only methods (L2P and DualPrompt). This indicates the merits of considering text and visual cues together for continual learning."
+      ]
+    },
+    {
+      "section_name": "Ablation studies",
+      "paragraphs": []
+    },
+    {
+      "section_name": "Task head selection interpretation and results.",
+      "paragraphs": [
+        "To elaborate on Sec. 4.3 , Fig. 9(a) reports the accuracy of test set samples corresponding to the task encoder heads at the end of incremental training on the last task. Here, the first row is to be interpreted as follows: 77\\% of test samples belonging to test set of the first task (test set ID 1) were correctly allocated to task head 1, 1.4\\% of test samples belonging to test set of the first task (test set ID 1) were incorrectly allocated to task head 2, and so on. Visualizing the task head selection results for the last task evaluation helps us uncover the amount of forgetting among the individual task heads at the end of the incremental training.",
+        "Fig. 9(b) compares the evolution of the task head selection accuracy across the incremental test steps. Here, at the first test step, we have only one task head and thus the task head selection accuracy is 100\\% . At the second test step, we have the test samples from two seen tasks as well as two available task heads. Out of all test samples of task 1, the reported 94.5\\% were correctly classified into the task head 1 while the rest 5.5\\% were incorrectly classified into the task head 2. Similarly, for test samples belonging to task 2, 3.1\\% were incorrectly classified into the task head 1 while the reported 96.9\\% were correctly classified into the task head 2, and so on. Hence, by studying the task head selection per incremental step, we can investigate the trend of forgetting among the individual task heads."
+      ]
+    },
+    {
+      "section_name": "Effect of inference module types.",
+      "paragraphs": [
+        "To further investigate the effects of inference modules on performances, we vary the number of layers for the VGA module (sec. 3.4 ) and for the task-specific encoders (sec. 3.5 ). Fig. 10(a) reports the results of varying the number of Transformer Decoder layers [ 71 ] in the VGA module. As the number of layers grow, the average accuracy (Avg) increases while the last task accuracy (Last) decreases. This indicates that while a larger number of layers in the VGA module lead to an increase in the initial tasks\u2019 performances, these are amenable to larger forgetting on latter incremental steps.",
+        "In Fig. 10(b) , we report the performances for varying number of MLP layers in the mean and the standard deviation heads of the task distribution encoders. Unlike the VGA module, here we observe a consistent trend of decreasing last and average task accuracy with the increase in the number of layers. This clearly indicates the superiority of using a single-layered task distribution encoder."
+      ]
+    },
+    {
+      "section_name": "Inference time for different finetuning methods.",
+      "paragraphs": [
+        "Table 18 investigates the inference time per iteration for different methods. Among the compared prompt-based methods, the inference time for AttriCLIP [ 74 ] is notably the highest. This is because it relies on selecting test instance-conditioned prompt tokens from a pool of prompt tokens. The instance-specific prompts are fed to the text encoder which further outputs an equivalent number of instance-specific text features to be used in the derivation of logits through eq. 1 . These operations increase the inference time of AttriCLIP beyond our proposed variants of CLAP 4 CLIP with hand-crafted prompts (Ours), class-conditioned prompts (CoOp + Ours), and multi-modal prompts (MaPLe + Ours) where the latter three outperform AttriCLIP significantly across all our settings."
+      ]
+    },
+    {
+      "section_name": "Influence of language-aware knowledge components on training dynamics.",
+      "paragraphs": [
+        "Continuing our ablations from sec. 4.3 , here we visualize the effects of using language-aware pre-trained knowledge, i.e. , weight initialization and task distribution regularization on the training dynamics of our model. For thorough analyses, we consider four variants of our model: (a) Ours uses both weight initialization and task distribution regularization, (b) Ours without weight initialization, (c) Ours without task distribution regularization, and (d) Ours without either of the language-aware components.",
+        "Does language-aware weight initialization help alleviate stability gap [ 37 ] ? To answer this, we first investigate the evolution of the training loss during the initial training stages of each incremental task. Figure 11 shows the loss \\mathcal{L} (eq. ( 12 )) during the initial 100 training iterations of each task. We observe that our proposed weight initialization technique leads to lower training losses for the scenarios with or without task distribution regularization, i.e. , in general, red values < green values and blue values < orange values . Following Harun et al . [ 20 ] , our observations support the hypothesis that larger loss values lead to the stability gap [ 37 ] for CL, and that an informed weight initialization method can help tackle it by reducing the initial training loss.",
+        "To further verify the benefit of our proposed weight initialization strategy for reducing the stability gap, we ablate the accuracy evolution of the first task test samples during the early training stages of each task. Figures 12 and 13 contrast these for CIFAR100. In general, our proposed weight initialization strategy helps mitigate the drop in accuracy during the initial training phases. On average, the first task accuracy upon the first iteration of training across all tasks remains 78.12 without weight initialization and grows to 79.5 with weight initialization, i.e . a gain of 1.38 percentage points.",
+        "How does language-aware knowledge help learning of task distributions in general? To understand the effect of language-aware knowledge on task distribution learning, we next investigate the evolution of the means and standard deviations learned by the past and the new task heads throughout the training iterations. To this end, Fig. 14 and Fig. 15 report the training iterations against the L2 norm of means and standard deviations for the past task heads (at each incremental training step) and the new task heads (at each training step). We observe two consistent trends regarding the evolution of distributions of the past and the new task heads. First, the proposed initialization of weights helps stabilize the learning of the means and standard deviations with ( red against green ) or without ( blue against orange )\nregularizing the task distributions. Second, regularizing the task distributions increases the L2 norms of the learned mean and the standard deviation as these now have to encode more information to mimic the distributions of the hand-crafted text features."
+      ]
+    },
+    {
+      "section_name": "Post-hoc novel data detection",
+      "paragraphs": [
+        "Our post-hoc novel data detection (PhNDD) setting aims to evaluate the continual learning methods at identifying novel data on the fly. To do so, we design an evaluation setup that uses no additional data resource other than that provided by the dataset-specific CL setting. Starting from the first test step, we treat the test data of the future tasks as novel while those of the seen tasks (including the most recently trained one) as seen . Since the last test step of a CL dataset has no future tasks, we exclude this step for our PhNDD evaluation, i.e., we carry our PhNDD evaluation of CL models starting from the first until the penultimate test step.",
+        "Following other standard practices [ 45 , 21 ] , we use the Energy scores [ 45 ] of the outputs for each test sample as a measure of the model\u2019s confidence score. The samples assigned with a confidence score below the pre-defined confidence threshold are classified as novel. By assuming the seen data as the positive class and the novel data as the negative class, we can obtain a series of true positives rate (TPR) and false positive rate (FPR) by varying the confidence thresholds. One of our PhNDD evaluation metrics \u2013 the FPR95 then measures the FPR when the TPR is 0.95. As such, a lower FPR95 score indicates better PhNDD performance. Our other two PhNDD performance metrics include the the area under receiver operating characteristic curve (AUROC [ 11 ] ) calculated based on FPR and TPR, and the precision-recall curve (AUPR [ 66 ] ). Higher values of AUROC and AUPR indicate better PhNDD performance.",
+        "In Table 5 in the main paper, we report the PhNDD metrics averaged over all the evaluated steps. Here, in Fig. 16 , we show the evolution of these metrics with each evaluation starting from the first test step until the penultimate test step of CIFAR100.\nWe observe that the zero-shot Continual-CLIP [ 70 ] has the poorest PhNDD performances (highest FPR95, and least AUROC and AUPR scores) across all steps given that it has not been finetuned on the downstream CL tasks. Among the finetuned methods, the CoOp [ 94 ] exhibits the poorest performances across all tasks. Among the variants of our method, combining CoOp with ours (CoOp + Ours) achieves the best PhNDD performances across all tasks. Furthermore, the deterministic versions: Ours w/o VI and CoOp + Ours (w/o VI) remain sub-optimal to their respective probabilistic variants, i.e., Ours and CoOp + Ours. The latter results validate the added perks of our probabilistic modeling framework for post-hoc novel data detection."
+      ]
+    },
+    {
+      "section_name": "Limitations and further research directions",
+      "paragraphs": []
+    },
+    {
+      "section_name": "Derivation of ELBO for the static prior.",
+      "paragraphs": [
+        "We seek to maximize the likelihood p(y^{1:T}) for all observed labels y^{1:T} . To derive the predictions, our framework uses the visual-aligned text features \\tilde{\\mathbf{t}}_{c}^{1:T} and the image inputs \\mathbf{x} (see eq. ( 1 )). Our evidence is thus p(y^{1:T}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{1:T}) for which we derive the lower bound (ELBO). In the following, we denote the prior network as p_{\\theta}(z^{t}) for which the true posterior is p_{\\theta}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t}) . We approximate the true posterior using the variational posterior q_{\\phi}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t}) . Our derivation ends up with the reconstruction term p_{\\theta}(y^{t}|z^{t},\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t}) that can be seen as a deterministic function converting a given latent vector z^{t} and an input image \\mathbf{x} into an observation y^{t} . For our CLIP-based variational framework, this deterministic function is the cosine similarity operation followed by the softmax application (Eq. ( 3b )).",
+        "\\log\\; p_{\\theta}(y^{1:T}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{1:T}) (Log-likelihood of evidence) =\\log p_{\\theta}(y^{1:T}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{1:T})\\int q_{\\phi}(z^{1:T}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{1:T})dz^{1:T} \\big{(}\\because\\int q_{\\phi}(z^{1:T}|x^{1:T})dz^{1:T}=1\\big{)} =\\int q_{\\phi}(z^{1:T}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{1:T})\\big{(}\\log p_{\\theta}(y^{1:T}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{1:T})\\big{)}dz^{1:T} (Bring evidence into integral) =\\mathbb{E}_{q_{\\phi}(z^{1:T}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{1:T})}\\big{[}\\log p_{\\theta}(y^{1:T}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{1:T})\\big{]} (Definition of Expectation) =\\sum_{t=1}^{T}\\bigg{[}\\mathbb{E}_{q_{\\phi}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}\\big{[}\\log p_{\\theta}(y^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})\\big{]}\\bigg{]} (Rewrite using sum) =\\sum_{t=1}^{T}\\bigg{[}\\mathbb{E}_{q_{\\phi}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}\\Big{[}\\log\\frac{p_{\\theta}(y^{t},z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}{p_{\\theta}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}\\Big{]}\\bigg{]} (Re-introduce $z^{t$ by Chain rule of probability}) =\\sum_{t=1}^{T}\\bigg{[}\\mathbb{E}_{q_{\\phi}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}\\Big{[}\\log\\frac{p_{\\theta}(y^{t},z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})q_{\\phi}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}{p_{\\theta}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})q_{\\phi}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}\\Big{]}\\bigg{]} ( Multiply by 1 =\\frac{q_{\\phi}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}{q_{\\phi}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}) =\\sum_{t=1}^{T}\\bigg{[}\\mathbb{E}_{q_{\\phi}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}\\Big{[}\\log\\frac{p_{\\theta}(y^{t},z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}{q_{\\phi}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}\\Big{]}+\\mathbb{E}_{q_{\\phi}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}\\Big{[}\\log\\frac{q_{\\phi}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}{p_{\\theta}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}\\Big{]}\\bigg{]} (Split the expectation) =\\sum_{t=1}^{T}\\bigg{[}\\mathbb{E}_{q_{\\phi}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}\\Big{[}\\log\\frac{p_{\\theta}(y^{t},z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}{q_{\\phi}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}\\Big{]}+\\mathbb{D}_{KL}\\big{(}q_{\\phi}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})\\|p_{\\theta}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})\\big{)} (Definition of KL divergence) \\geq\\sum_{t=1}^{T}\\bigg{[}\\mathbb{E}_{q_{\\phi}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}\\Big{[}\\log\\frac{p_{\\theta}(y^{t},z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}{q_{\\phi}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}\\Big{]}\\bigg{]} (\\because KL divergence\\geq 0) \\geq\\sum_{t=1}^{T}\\bigg{[}\\mathbb{E}_{q_{\\phi}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}\\Big{[}\\log\\frac{p_{\\theta}(y^{t}|z^{t},\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})p_{\\chi}(z^{t})}{q_{\\phi}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}\\Big{]}\\bigg{]} (Chain rule of probability) \\geq\\sum_{t=1}^{T}\\bigg{[}\\mathbb{E}_{q_{\\phi}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}\\Big{[}\\log p_{\\theta}(y^{t}|z^{t},\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})\\Big{]}+\\mathbb{E}_{q_{\\phi}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}\\Big{[}\\frac{p_{\\chi}(z^{t})}{q_{\\phi}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}\\Big{]}\\bigg{]} (Split the Expectation) \\geq\\sum_{t=1}^{T}\\bigg{[}\\mathbb{E}_{q_{\\phi}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})}\\Big{[}\\log p_{\\theta}(y^{t}|z^{t},\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})\\Big{]}-\\mathbb{D}_{KL}\\big{(}q_{\\phi}(z^{t}|\\mathbf{x};\\tilde{\\mathbf{t}}_{c}^{t})\\|p_{\\chi}(z^{t})\\big{)}\\bigg{]} (Definition of KL divergence)"
+      ]
+    },
+    {
+      "section_name": "Data-driven prior",
+      "paragraphs": [
+        "The choice of prior is pivotal to a Bayesian inference workflow like ours [ 16 ] . While a standard Gaussian prior p_{\\chi}=\\mathcal{N}(0,I) adapts well to a range of settings, it is (seemingly) uninformative regarding the nature of a given task [ 19 ] .\nWith the end goal of deriving more informative priors, we thus seek to replace p_{\\chi} with task data-dependent prior distributions p^{t} , wherever applicable.",
+        "To this end, we first note that the outputs of the VGA module remain invariant not only to the order of the input text features (due to self-attention) but also to the order of the contextual image features (due to cross-attention). The latter invariance implies that the joint task-specific distribution learned by the encoder q^{t}_{\\phi} (conditioned on the VGA outputs \\hat{\\mathbf{t}}_{c}^{t} from eq. 5 ) is preserved if we were to permute the elements of the task-specific visual context set. More formally, this observation helps guarantee the (finite) exchangeability and the consistency properties of a stochastic process [ 55 ] .",
+        "Motivated by the above, we treat the t- th task image features \\mathbf{x}^{t} as the target set \\mathcal{T}^{t} and employ a randomly chosen subset of it as our context set \\mathcal{C}^{t} to align the t- th task text features and to condition our prior p^{t} on:",
+        "\\begin{split}\\hat{\\mathbf{t}}_{c}^{t}&=VGA\\big{(}Q=\\mathbf{t}_{c}^{t},K=V=\\mathcal{C}^{t}\\big{)},\\ p^{t}&=q_{\\phi}^{t}(\\tilde{\\mathbf{t}}^{t}_{c})=\\big{(}\\mu^{t}(\\tilde{\\mathbf{t}}_{c}^{t}),\\sigma^{t}(\\tilde{\\mathbf{t}}_{c}^{t})\\big{)}\\end{split} (14)",
+        "where \\tilde{\\mathbf{t}}^{t} is the fused task-specific text feature following eq. ( 6 ). The task-specific prior p^{t} thus endows our training framework with a resemblance to the neural process (NP) architectures [ 18 , 31 , 27 ] .\nFollowing NPs, we use the same encoder q_{\\phi}^{t} to parameterize the conditional prior and the variational posterior. This results in the following approximate ELBO (see App. 10 for the ELBO derivation):",
+        "\\begin{split}\\log\\;&p(\\mathbf{y}^{1:T}|\\mathbf{x},\\mathcal{C}^{1:T})\\geq\\ &\\sum_{t=1}^{T}\\bigg{[}\\mathbb{E}_{q_{\\phi}(z^{t}|\\mathbf{x})}\\Big{[}\\log p(\\mathbf{y}^{t}|z^{t},\\mathbf{x}_{\\mathcal{T}}^{t},\\mathcal{C}^{t})\\Big{]}\\ &-\\mathbb{D}_{KL}\\big{(}q_{\\phi}(z^{t}|\\mathcal{T}^{t})\\|q_{\\phi}(z^{t}|\\mathcal{C}^{t})\\big{)}\\bigg{]}\\end{split} (15)",
+        "where in practice, the entire set of t- th images in a training minibatch form the target set \\mathcal{T}^{t} and a randomly chosen subset of the targets make up the context \\mathcal{C}^{t} [ 38 ] . Note that unlike NPs, our framework does not entirely rely on data-driven priors. Namely, while training on a CL task t , the past-task encoders are frozen and we have ample t- th task data points to condition the prior on. We thus resort to optimizing the ELBO ( 15 ) during training. On the other hand, during finetuning, we have limited task-specific data points to condition our context on. As such, we empirically found that switching to the static prior yields better results and thus resort to optimizing the ELBO ( 11 ) during finetuning."
+      ]
+    },
+    {
+      "section_name": "Effect of the context size on data-driven prior.",
+      "paragraphs": [
+        "Table 4 in the main paper compares the results of using a data-driven prior against the uniform normal prior and the language-aware prior (see Sec. 3.6 ), where the latter is driven from the pre-trained text encoder using hand-crafted prompts. We observe that data-driven prior leads to minor accuracy improvements over the standard normal prior but falls narrowly behind the language-aware prior. Here, we study the influence of the batch size of the context set selected at random to derive our prior from.",
+        "Table 21 shows the last task accuracy with varying context sizes and a fixed target batch size of 64. We find that a smaller context set size hurts the performance of the model to the extent of falling behind the standard normal prior. Given that the context sets are the sampled subsets of the training (target) minibatches, a much smaller context set can lead to the increase in the prior matching loss values. We find that the context set batch size of 40 performs the best, and thus use this to ablate the prior-dependent performances in the main paper."
+      ]
+    },
+    {
+      "section_name": "Derivation of ELBO for the data-driven prior.",
+      "paragraphs": [
+        "Similar to App. 10 , we start with the log-likelihood of the evidence which now involves conditioning on an additional context set \\mathcal{C}^{1:T} . The t- th task context set is used to condition our prior network p_{\\theta}(z^{t}|\\mathcal{C}^{t}) . Following the standard practices of other data-driven prior frameworks [ 18 , 27 ] , we introduce parameter-sharing between our conditional prior and variational posterior networks. This allows us to replace our prior network with the variational posterior network q_{\\phi}(z^{t}|\\mathcal{T}^{t}) , where \\mathcal{T} is the target set for task t .",
+        "\\log \\;p_{\\theta}(Y_{\\mathcal{T}}^{1:T}|\\mathbf{x}_{\\mathcal{T}}^{1:T},\\mathcal{C}^{1:T}) (Log-likelihood of evidence) =\\log p_{\\theta}(Y_{\\mathcal{T}}^{1:T}|\\mathbf{x}_{\\mathcal{T}}^{1:T},\\mathcal{C}^{1:T})\\int q_{\\phi}(z^{1:T}|\\mathbf{x}_{\\mathcal{T}}^{1:T},\\mathcal{C}^{1:T})dz^{1:T} \\big{(}\\because\\int q_{\\phi}(z^{1:T}|\\mathbf{x}_{\\mathcal{T}}^{1:T},\\mathcal{C}^{1:T})dz^{1:T}=1\\big{)} =\\int q_{\\phi}(z^{1:T}|\\mathbf{x}_{\\mathcal{T}}^{1:T},\\mathcal{C}^{1:T})\\big{(}\\log p_{\\theta}(Y_{\\mathcal{T}}^{1:T}|\\mathbf{x}_{\\mathcal{T}}^{1:T},\\mathcal{C}^{1:T})\\big{)}dz^{1:T} (Bring evidence into integral) =\\mathbb{E}_{q_{\\phi}(z^{1:T}|\\mathcal{T}^{1:T})}[\\log p_{\\theta}(Y_{\\mathcal{T}}^{1:T}|\\mathbf{x}_{\\mathcal{T}}^{1:T},\\mathcal{C}^{1:T})] (By definition) =\\sum_{t=1}^{T}\\bigg{[}\\mathbb{E}_{q_{\\phi}(z^{t}|\\mathcal{T}^{t})}[\\log p_{\\theta}(Y_{\\mathcal{T}}^{t}|\\mathbf{x}_{\\mathcal{T}}^{t},\\mathcal{C}^{t})]\\bigg{]} (Rewrite using sum) =\\sum_{t=1}^{T}\\bigg{[}\\mathbb{E}_{q_{\\phi}(z^{t}|\\mathcal{T}^{t})}\\Big{[}\\log\\frac{p_{\\theta}(Y_{\\mathcal{T}}^{t},z^{t}|\\mathbf{x}_{\\mathcal{T}}^{t},\\mathcal{C}^{t})}{p_{\\theta}(z^{t}|\\mathbf{x}_{\\mathcal{T}}^{t},Y_{\\mathcal{T}}^{t},\\mathcal{C}^{t})}\\Big{]}\\bigg{]} (Re-introduce\\;z^{t} by Chain rule of probability) =\\sum_{t=1}^{T}\\bigg{[}\\mathbb{E}_{q_{\\phi}(z^{t}|\\mathcal{T}^{t})}\\Big{[}\\log\\frac{p_{\\theta}(Y_{\\mathcal{T}}^{t}|z^{t},\\mathbf{x}_{\\mathcal{T}}^{t},\\mathcal{C}^{t})\\;p_{\\theta}(z^{t}|\\mathcal{C}^{t})}{p_{\\theta}(z^{t}|\\mathcal{T}^{t})}\\Big{]}\\bigg{]} (By Chain rule of probability;\\;\\mathcal{C}\\subset\\mathcal{T}) =\\sum_{t=1}^{T}\\bigg{[}\\mathbb{E}_{q_{\\phi}(z^{t}|\\mathcal{T}^{t})}\\Big{[}\\log\\frac{p_{\\theta}(Y_{\\mathcal{T}}^{t}|z^{t},\\mathbf{x}_{\\mathcal{T}}^{t},\\mathcal{C}^{t})\\;p_{\\theta}(z^{t}|\\mathcal{C}^{t})\\;q_{\\phi}(z^{t}|\\mathcal{T}^{t})}{p_{\\theta}(z^{t}|\\mathcal{T}^{t})\\;q_{\\phi}(z^{t}|\\mathcal{T}^{t})}\\Big{]}\\bigg{]} (Equivalent fraction) =\\sum_{t=1}^{T}\\bigg{[}\\mathbb{E}_{q_{\\phi}(z^{t}|\\mathcal{T}^{t})}\\Big{[}\\log p_{\\theta}(Y_{\\mathcal{T}}^{t}|z^{t},\\mathbf{x}_{\\mathcal{T}}^{t},\\mathcal{C}^{t})\\Big{]} \\phantom{={}}\\phantom{={}}\\phantom{={}}+\\mathbb{E}_{q_{\\phi}(z^{t}|\\mathcal{T}^{t})}\\Big{[}\\log\\frac{p_{\\theta}(z^{t}|\\mathcal{C}^{t})}{q_{\\phi}(z^{t}|\\mathcal{T}^{t})}\\Big{]}+\\mathbb{E}_{q_{\\phi}(z^{t}|\\mathcal{T}^{t})}\\Big{[}\\log\\frac{q_{\\phi}(z^{t}|\\mathcal{T}^{t})}{p_{\\theta}(z^{t}|\\mathcal{T}^{t})}\\Big{]}\\bigg{]} (Split the expectation) =\\sum_{t=1}^{T}\\bigg{[}\\mathbb{E}_{q_{\\phi}(z^{t}|\\mathcal{T}^{t})}\\Big{[}\\log p_{\\theta}(Y_{\\mathcal{T}}^{t}|z^{t},\\mathbf{x}_{\\mathcal{T}}^{t},\\mathcal{C}^{t})\\Big{]} \\phantom{={}}\\phantom{={}}\\phantom{={}}-\\mathbb{D}_{KL}\\big{(}q_{\\phi}(z^{t}|\\mathcal{T}^{t})\\|p_{\\theta}(z^{t}|\\mathcal{C}^{t})\\big{)}+\\mathbb{D}_{KL}\\big{(}q_{\\phi}(z^{t}|\\mathcal{T}^{t})\\|p_{\\theta}(z^{t}|\\mathcal{T}^{t})\\big{)}\\bigg{]} (By definition of KL divergence) \\geq\\sum_{t=1}^{T}\\bigg{[}\\mathbb{E}_{q_{\\phi}(z^{t}|\\mathcal{T}^{t})}\\Big{[}\\log p_{\\theta}(Y_{\\mathcal{T}}^{t}|z^{t},\\mathbf{x}_{\\mathcal{T}}^{t},\\mathcal{C}^{t})\\Big{]}-\\mathbb{D}_{KL}\\big{(}q_{\\phi}(z^{t}|\\mathcal{T}^{t})\\|p_{\\theta}(z^{t}|\\mathcal{C}^{t})\\big{)}\\bigg{]} (\\becauseKL divergence\\geq 0)"
+      ]
+    }
+  ],
+  "figures": [
+    {
+      "figure_id": "S3.F1",
+      "files": {
+        "image": "2403.19137/figures/S3_F1.png"
+      },
+      "figure_name": "Figure 1",
+      "caption": "Figure 1 : CLAP \\mathbf{4} CLIP overview: the visual-guided attention (VGA) inference module uses the text features as query (Q), and the visual features as keys (K) and values (V) to produce visual-guided text features. The task-specific text features are fed to their respective task distribution encoders (\\mu^{t},\\sigma^{t}) . The task distribution samples are then fused with the original task features prior to deriving the task logits y^{t} . All task logits are concatenated to produce the final prediction y^{1:t} .; CLAP \\mathbf{4} CLIP overview: the visual-guided attention (VGA) inference module uses the text features as query (Q), and the visual features as keys (K) and values (V) to produce visual-guided text features. The task-specific text features are fed to their respective task distribution encoders (\\mu^{t},\\sigma^{t}) . The task distribution samples are then fused with the original task features prior to deriving the task logits y^{t} . All task logits are concatenated to produce the final prediction y^{1:t} ."
+    },
+    {
+      "figure_id": "S3.F2",
+      "files": [
+        {
+          "image": "2403.19137/figures/S3.F2.sf1.1.png"
+        },
+        {
+          "image": "2403.19137/figures/S3.F2.sf2.1.png"
+        }
+      ],
+      "figure_name": "Figure 2",
+      "caption": "(a) Effect of \\alpha on Accuracy and Backward Transfer (BWT).; (b) Avg. rotation angle [ 53 ] per step between image and text features.; Need for Visual-guided Attention (VGA) inference module. Fig. 2(a) : A simple adapter is inadequate at preventing catastrophic forgetting in CL \u2013 marked by high BWT scores; Fig. 2(b) : VGA module encourages cross-modal alignment among text and image features \u2013 marked by a decrease in average angle \\texttt{arccos}\\langle t,1\\rangle between them \u2013 where otherwise the former deviates further with incremental training steps."
+    },
+    {
+      "figure_id": "S3.F3",
+      "files": {
+        "image": "2403.19137/figures/S3_F3.png"
+      },
+      "figure_name": "Figure 3",
+      "caption": "Figure 3 : Need for task-specific distribution encoders: Cosine distance between the centroids of class-specific latent variables produced without ( left ) and with ( right ) the use of task-specific encoders on CIFAR100 (10 tasks, 10 classes per task). Centroids of class-specific latent variables are more separable on the right.; Need for task-specific distribution encoders: Cosine distance between the centroids of class-specific latent variables produced without ( left ) and with ( right ) the use of task-specific encoders on CIFAR100 (10 tasks, 10 classes per task). Centroids of class-specific latent variables are more separable on the right."
+    },
+    {
+      "figure_id": "S4.F4",
+      "files": [
+        {
+          "image": "2403.19137/figures/S4_F4_sf1_1.png"
+        },
+        {
+          "image": "2403.19137/figures/S4_F4_sf2_1.png"
+        }
+      ],
+      "figure_name": "Figure 4",
+      "caption": "(a) CIFAR100; (b) ImageNet100; Performance evolution of different methods. The top-1 accuracy (%) is reported upon learning of each task (see App. fig. 8 for results on all datasets)."
+    },
+    {
+      "figure_id": "S4.F5",
+      "files": [
+        {
+          "image": "2403.19137/figures/S4.F5.sf1.1.png"
+        },
+        {
+          "image": "2403.19137/figures/S4_F5_sf2_1.png"
+        }
+      ],
+      "figure_name": "Figure 5",
+      "caption": "(a) Accuracy-runtime tradeoff; (b) Parameter count comparison; Ablations on CIFAR100 showing: (a) performance trade-off with the number of MC samples M , (b) the number of trainable parameters in different finetuning methods."
+    },
+    {
+      "figure_id": "S5.F6",
+      "files": {
+        "image": "2403.19137/figures/S5_F6.png"
+      },
+      "figure_name": "Figure 6",
+      "caption": "Figure 6 : Analyses of various strategies for exemplar selection w/ our method on CIFAR100.; Analyses of various strategies for exemplar selection w/ our method on CIFAR100."
+    },
+    {
+      "figure_id": "S7.F7",
+      "files": {
+        "image": "2403.19137/figures/S7_F7.png"
+      },
+      "figure_name": "Figure 7",
+      "caption": "Figure 7 : Illustration of the deterministic variant of Ours (Ours w/o VI in Table 1 ): the task-specific text features are fed to their respective task encoders, consisting of only the mean \\mu layer each. There is no sampling involved and the task mean outputs are fused directly with the original task features prior to deriving the task logits \\mathbf{y}^{t} . All task logits are concatenated to produce the final prediction \\mathbf{y}^{1:t} .; Illustration of the deterministic variant of Ours (Ours w/o VI in Table 1 ): the task-specific text features are fed to their respective task encoders, consisting of only the mean \\mu layer each. There is no sampling involved and the task mean outputs are fused directly with the original task features prior to deriving the task logits \\mathbf{y}^{t} . All task logits are concatenated to produce the final prediction \\mathbf{y}^{1:t} ."
+    },
+    {
+      "figure_id": "S8.F8",
+      "files": [
+        {
+          "image": "2403.19137/figures/S8_F8_sf1_1.png"
+        },
+        {
+          "image": "2403.19137/figures/S8_F8_sf2_1.png"
+        },
+        {
+          "image": "2403.19137/figures/S8_F8_sf3_1.png"
+        },
+        {
+          "image": "2403.19137/figures/S8_F8_sf4_1.png"
+        },
+        {
+          "image": "2403.19137/figures/S8_F8_sf5_1.png"
+        }
+      ],
+      "figure_name": "Figure 8",
+      "caption": "(a) CIFAR100; (b) ImageNet100; (c) ImageNet-R; (d) CUB200; (e) VTAB; Performance evolution of different methods. The top-1 accuracy (%) is reported upon learning of each task."
+    },
+    {
+      "figure_id": "S8.F9",
+      "files": [
+        {
+          "image": "2403.19137/figures/S8_F9_sf1_1.png"
+        },
+        {
+          "image": "2403.19137/figures/S8_F9_sf2_1.png"
+        }
+      ],
+      "figure_name": "Figure 9",
+      "caption": "(a) Last step task head selection accuracies; (b) Per step task head selection accuracies; Task head selection accuracies reported on CIFAR-100 upon: (a) evaluation on the last step, (b) evaluation on each incremental step."
+    },
+    {
+      "figure_id": "S8.F10",
+      "files": [
+        {
+          "image": "2403.19137/figures/S8_F10_sf1_1.png"
+        },
+        {
+          "image": "2403.19137/figures/S8_F10_sf2_1.png"
+        }
+      ],
+      "figure_name": "Figure 10",
+      "caption": "(a); (b); Ablation studies on CIFAR100 showing: (a) the variation of accuracy with the number of Transformer decoder layers in the VGA module, (b) the variation of accuracy with the number of linear layers in the task-specific mean and standard deviation encoders."
+    },
+    {
+      "figure_id": "S8.F11",
+      "files": {
+        "image": "2403.19137/figures/S8_F11.png"
+      },
+      "figure_name": "Figure 11",
+      "caption": "Figure 11 : Evolution of the loss value \\mathcal{L} during the first 100 training iterations of each task on CIFAR100. Training with our proposed weight initialization strategy consistently leads to lower training losses thus bridging the stability gap [ 37 ] in CL.; Evolution of the loss value \\mathcal{L} during the first 100 training iterations of each task on CIFAR100. Training with our proposed weight initialization strategy consistently leads to lower training losses thus bridging the stability gap [ 37 ] in CL."
+    },
+    {
+      "figure_id": "S8.F12",
+      "files": {
+        "image": "2403.19137/figures/S8_F12.png"
+      },
+      "figure_name": "Figure 12",
+      "caption": "Figure 12 : Test accuracy without weight initialization on the first task for the initial 100 iterations of incremental training on all ten tasks of CIFAR100. The green lines are the means over three different runs, the orange shades denote \\pm 1 standard error of the mean. The labels to the vertical bars denote the accuracy values for the first iteration of training on each task.; Test accuracy without weight initialization on the first task for the initial 100 iterations of incremental training on all ten tasks of CIFAR100. The green lines are the means over three different runs, the orange shades denote \\pm 1 standard error of the mean. The labels to the vertical bars denote the accuracy values for the first iteration of training on each task."
+    },
+    {
+      "figure_id": "S8.F13",
+      "files": {
+        "image": "2403.19137/figures/S8_F13.png"
+      },
+      "figure_name": "Figure 13",
+      "caption": "Figure 13 : Test accuracy with weight initialization on the first task for the initial 100 iterations of incremental training on all ten tasks of CIFAR100. The green lines are the means over three different runs, the orange shades denote \\pm 1 standard error of the mean. The labels to the vertical bars denote the accuracy values for the first iteration of training on each task.; Test accuracy with weight initialization on the first task for the initial 100 iterations of incremental training on all ten tasks of CIFAR100. The green lines are the means over three different runs, the orange shades denote \\pm 1 standard error of the mean. The labels to the vertical bars denote the accuracy values for the first iteration of training on each task."
+    },
+    {
+      "figure_id": "S8.F14",
+      "files": [
+        {
+          "image": "2403.19137/figures/S8_F14_sf1_1.png"
+        },
+        {
+          "image": "2403.19137/figures/S8_F14_sf2_1.png"
+        }
+      ],
+      "figure_name": "Figure 14",
+      "caption": "(a) L2 norm of mean of past task heads; (b) L2 norm of standard deviation of past task heads; Evolution of mean and standard deviation of past task encoders with training iterations."
+    },
+    {
+      "figure_id": "S8.F15",
+      "files": [
+        {
+          "image": "2403.19137/figures/S8_F15_sf1_1.png"
+        },
+        {
+          "image": "2403.19137/figures/S8_F15_sf2_1.png"
+        }
+      ],
+      "figure_name": "Figure 15",
+      "caption": "(a) L2 norm of mean of current task heads; (b) L2 norm of standard deviation of current task heads; Evolution of mean and standard deviation of task encoders (recorded at the step where they were first introduced) with training iterations."
+    },
+    {
+      "figure_id": "S8.F16",
+      "files": {
+        "image": "2403.19137/figures/S8_F16.png"
+      },
+      "figure_name": "Figure 16",
+      "caption": "Figure 16 : Performance comparisons for post-hoc novel data detection averaged over 3 runs on CIFAR100: FPR95 ( left ), AUROC ( middle ), and AUPR ( right ). The evaluations are carried over all but the last incremental test step.; Performance comparisons for post-hoc novel data detection averaged over 3 runs on CIFAR100: FPR95 ( left ), AUROC ( middle ), and AUPR ( right ). The evaluations are carried over all but the last incremental test step."
+    }
+  ],
+  "tables": [
+    {
+      "table_id": "S4.T1",
+      "files": {},
+      "table_name": "Table 1 ",
+      "caption": "Performance comparison of different methods averaged over three runs. Best scores are in bold . Second best scores are in blue . The results for L2P, DualPrompt, and PROOF are taken from [ 92 ] . See App. Table 14 for std. dev. scores."
+    },
+    {
+      "table_id": "S4.T2",
+      "files": {},
+      "table_name": "Table 2 ",
+      "caption": "Performance comparison on the CDCL setting [ 74 ] . All CLIP-based methods use the ViT-L/14 backbone."
+    },
+    {
+      "table_id": "S4.T3",
+      "files": {},
+      "table_name": "Table 3 ",
+      "caption": "Ablations of the key components of CLAP 4 CLIP on CIFAR100."
+    },
+    {
+      "table_id": "S4.T4",
+      "files": {},
+      "table_name": "Table 4 ",
+      "caption": "Performances of different priors averaged over 3 runs on CIFAR100."
+    },
+    {
+      "table_id": "S5.T5",
+      "files": {},
+      "table_name": "Table 5 ",
+      "caption": "PhNDD performances averaged over 3 runs on CIFAR100. Best scores for each variant are in bold ."
+    },
+    {
+      "table_id": "S5.T6",
+      "files": {},
+      "table_name": "Table 6 ",
+      "caption": "Entropy-based exemplar selection results for different methods on CIFAR100."
+    },
+    {
+      "table_id": "S8.T7",
+      "files": {},
+      "table_name": "Table 7 ",
+      "caption": "Benchmark datasets and their details."
+    },
+    {
+      "table_id": "S8.T8",
+      "files": {},
+      "table_name": "Table 8 ",
+      "caption": "Hyperparameter tuning : we run a gridsearch on the CIFAR100 setup with a validation set comprising 10\\% of the training set. The chosen values are reused across all other setups."
+    },
+    {
+      "table_id": "S8.T9",
+      "files": {},
+      "table_name": "Table 9 ",
+      "caption": "Accuracy vs. Training epochs"
+    },
+    {
+      "table_id": "S8.T10",
+      "files": {},
+      "table_name": "Table 10 ",
+      "caption": "Accuracy vs. Finetuning epochs"
+    },
+    {
+      "table_id": "S8.T11",
+      "files": {},
+      "table_name": "Table 11 ",
+      "caption": "Accuracy vs. weight \u201c \\gamma \u201d for \\mathcal{L}_{\\text{KD}}"
+    },
+    {
+      "table_id": "S8.T12",
+      "files": {},
+      "table_name": "Table 12 ",
+      "caption": "Accuracy vs. weight \u201c \\lambda \u201d for \\mathbb{D}_{\\text{KL}}"
+    },
+    {
+      "table_id": "S8.T13",
+      "files": {},
+      "table_name": "Table 13 ",
+      "caption": "Performance comparison of VT-CLIP styled VGA with Ours on CIFAR-100."
+    },
+    {
+      "table_id": "S8.T14",
+      "files": {},
+      "table_name": "Table 14 ",
+      "caption": "Standard deviation (std. dev.) scores comparison for Avg. accuracy scores of Table 1 between our variants and their corresponding baseline prompt-based finetuning methods over three runs. In general, our std. dev. scores are comparable to or lower than the corresponding baseline methods and are thus statistically significant."
+    },
+    {
+      "table_id": "S8.T15",
+      "files": {},
+      "table_name": "Table 15 ",
+      "caption": "Backward Transfer (BwT) scores \\uparrow comparison between our variants and their corresponding baseline prompt-based finetuning methods averaged over three runs. Best scores across each pair is highlighted in bold ."
+    },
+    {
+      "table_id": "S8.T16",
+      "files": {},
+      "table_name": "Table 16 ",
+      "caption": "Transfer scores [ 89 ] \\uparrow comparison between our variants and their corresponding baseline prompt-based finetuning methods averaged over three runs. Best scores across each pair is highlighted in bold ."
+    },
+    {
+      "table_id": "S8.T17",
+      "files": {},
+      "table_name": "Table 17 ",
+      "caption": "Expected Calibration Error (ECE) scores \\downarrow (computed over 15 bins) comparison between our variants and their corresponding baseline prompt-based finetuning methods averaged over three runs. Best scores across each pair is highlighted in bold ."
+    },
+    {
+      "table_id": "S8.T18",
+      "files": {},
+      "table_name": "Table 18 ",
+      "caption": "Average inference time for different finetuning methods on CIFAR100."
+    },
+    {
+      "table_id": "S9.T19",
+      "files": {},
+      "table_name": "Table 19 ",
+      "caption": "Performance comparison on CIFAR100 using hand-crafted vs. LLM-generated prompts for encoding language-aware CLIP knowledge. The results reported are averages over 3 runs. Best results across the metrics are highlighted in bold ."
+    },
+    {
+      "table_id": "S9.T20",
+      "files": {},
+      "table_name": "Table 20 ",
+      "caption": "Single-task learning performance on the VQAv2 subset of the CLiMB dataset."
+    },
+    {
+      "table_id": "S11.T21",
+      "files": {},
+      "table_name": "Table 21 ",
+      "caption": "Influence of the context set size used to derive the data-driven prior on CIFAR100."
+    }
+  ],
+  "arxiv_id": "2403.19137",
+  "license_name": "CC BY 4.0",
+  "license_url": "http://creativecommons.org/licenses/by/4.0/",
+  "url": "https://arxiv.org/abs/2403.19137",
+  "authors": "Saurav Jha, Dong Gong, Lina Yao"
+}
