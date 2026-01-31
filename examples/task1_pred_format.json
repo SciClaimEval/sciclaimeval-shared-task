@@ -1,0 +1,22 @@
+[
+  {
+    "claim_id": "val_tab_0001",
+    "pred_label": "Refuted"
+  },
+  {
+    "claim_id": "val_tab_0002",
+    "pred_label": "Supported"
+  },
+  {
+    "claim_id": "val_tab_0005",
+    "pred_label": "Supported"
+  },
+  {
+    "claim_id": "val_tab_0006",
+    "pred_label": "Refuted"
+  },
+  {
+    "claim_id": "val_tab_0042",
+    "pred_label": "Refuted"
+  }
+]
