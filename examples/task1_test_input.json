@@ -1,0 +1,16 @@
+[
+    {
+        "paper_id": "2403.19137",
+        "claim_id": "test_fig_1528",
+        "claim": "Figure 6 shows that variance-based exemplar selection outperforms random, and is only second to iCaRL [ 65 ] in terms of Last accuracy.",
+        "caption": "Figure 6 : Analyses of various strategies for exemplar selection w/ our method on CIFAR100.",
+        "evi_type": "figure",
+        "evi_path": "figures/test/test_fig_1528.png",
+        "context": "To study uncertainty-based exemplar selection, we first employ entropy of the output softmax distributions as our selection criteria [ 6 ] . Table 6 shows the efficacy of entropy-based rehearsal for our method, where other deterministic methods lag behind due to their inconsistent UQ capabilities. Next, we employ the energy [ 45 ] and the variance of softmax distributions of the M predictions as our selection criterion, and contrast these against other criteria proposed in [ 6 ] .",
+        "domain": "ml",
+        "use_context": "no",
+        "paper_path": "papers/test/ml_2403.19137.json",
+        "license_name": "CC BY 4.0",
+        "license_url": "http://creativecommons.org/licenses/by/4.0/"
+  }
+]

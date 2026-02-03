@@ -1,0 +1,17 @@
+[
+    {
+    "sample_id": "test_0062",
+    "question": "Which piece of evidence supports the claim? Only return the evidence ID (for example, evidence_id_1 or evidence_id_2).",
+    "evidence_id_1": "figures/test/test_fig_0004.png",
+    "evidence_id_2": "figures/test/test_fig_0003.png",
+    "claim": "This has particularly worse implications for a probabilistic adapter like ours, where a too large \\alpha can inject enough noise to corrupt the pre-trained representations to the point of catastrophic forgetting (see Fig. 2(a) ).",
+    "caption": "(a) Effect of \\alpha on Accuracy and Backward Transfer (BWT).; (b) Avg. rotation angle [ 53 ] per step between image and text features.; Need for Visual-guided Attention (VGA) inference module. Fig. 2(a) : A simple adapter is inadequate at preventing catastrophic forgetting in CL – marked by high BWT scores; Fig. 2(b) : VGA module encourages cross-modal alignment among text and image features – marked by a decrease in average angle \\texttt{arccos}\\langle t,1\\rangle between them – where otherwise the former deviates further with incremental training steps.",
+    "evi_type": "figure",
+    "context": "However, finetuning adapters for CL is not straightforward. Namely, we have the overhead of search for the dataset-specific residual ratio \\alpha (see Eq. ( 2 )) [ 17 , 87 ] .",
+    "domain": "ml",
+    "use_context": "yes",
+    "paper_path": "papers/test/ml_2403.19137.json",
+    "license_name": "CC BY 4.0",
+    "license_url": "http://creativecommons.org/licenses/by/4.0/"
+  }
+]
