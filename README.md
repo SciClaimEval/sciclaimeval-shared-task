@@ -16,26 +16,26 @@ Each sample includes the following information:
 - detail_others: if the operation is Other, a description is provided here
 - claim_id_pair: one claim is paired with two pieces of evidence, creating two labels: Supported and Refuted
 
-Please refer to the file [here](https://github.com/SciClaimEval/sciclaimeval-shared-task/blob/main/examples/task1_ground_truth.json) for an example.
+Please refer to the file [task1_ground_truth](https://github.com/SciClaimEval/sciclaimeval-shared-task/blob/main/examples/task1_ground_truth.json) for an example.
 
 
-Please prepare your prediction file following the format in [this file](https://github.com/SciClaimEval/sciclaimeval-shared-task/blob/main/examples/task1_pred_format.json).
+Please prepare your prediction file following the format in [task1_pred_format](https://github.com/SciClaimEval/sciclaimeval-shared-task/blob/main/examples/task1_pred_format.json).
 
 
 ### Information about the Test Set:
 
 - You will receive the input for the test set, but the gold labels are not available.
-Please refer to the file [here](https://github.com/SciClaimEval/sciclaimeval-shared-task/blob/main/examples/task1_test_input.json) for an example; the following keys are missing: label, operation, detail_others, and claim_id_pair.
+Please refer to the file [task1_test_input.json](https://github.com/SciClaimEval/sciclaimeval-shared-task/blob/main/examples/task1_test_input.json) for an example; the following keys are missing: label, operation, detail_others, and claim_id_pair.
 
-- [Here](https://github.com/SciClaimEval/sciclaimeval-shared-task/blob/main/examples/task2_test_input.json) is the test input example for the second task.
+- [task2_test_input.json](https://github.com/SciClaimEval/sciclaimeval-shared-task/blob/main/examples/task2_test_input.json) is the test input example for the second task.
 
 
 ## Subtask 2: Claim Evidence Prediction Task
 
-- Please refer to the file [here](https://github.com/SciClaimEval/sciclaimeval-shared-task/blob/main/examples/task2_ground_truth.json) for an example.
+- Please refer to the file [task2_ground_truth](https://github.com/SciClaimEval/sciclaimeval-shared-task/blob/main/examples/task2_ground_truth.json) for an example.
 
 
-- Please prepare your prediction file following the format in [this file](https://github.com/SciClaimEval/sciclaimeval-shared-task/blob/main/examples/task2_pred_format.json).
+- Please prepare your prediction file following the format in [task2_pred_format](https://github.com/SciClaimEval/sciclaimeval-shared-task/blob/main/examples/task2_pred_format.json).
 
 
 ## Evaluation
