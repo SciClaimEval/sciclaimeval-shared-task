@@ -59,8 +59,8 @@
   {
     "sample_id": "val_0181",
     "question": "Which piece of evidence supports the claim? Only return the evidence ID (for example, evidence_id_1 or evidence_id_2).",
-    "evidence_id_1": "tables/val_tab_0306.tex",
-    "evidence_id_2": "tables/val_tab_1591.tex",
+    "evidence_id_1": "tables_png/dev/val_tab_0306.png",
+    "evidence_id_2": "tables_png/dev/val_tab_1591.png",
     "label": "evidence_id_1",
     "claim": "Next, removing the LLM-measured features completely or only keeping them decreases the Kendall-Tau ( \\tau ) correlation score in \\mirage .",
     "context": "Are all heuristic features necessary? We experiment with the set of features used for learning to rank model training as a surrogate judge. We evaluate four training configurations: (i) all features (ii) without LLM-measured features (iii) without language detection and support, i.e., the low-correlation features observed in Figure 5 , and (iv) including only LLM-measured features. From Table 4 , we observe that removing low-correlated heuristic RAG features, actually helps the learning to rank model to learn better leading to a conclusion that not necessarily all features are important.",
@@ -78,8 +78,8 @@
   {
     "sample_id": "val_0076",
     "question": "Which piece of evidence supports the claim? Only return the evidence ID (for example, evidence_id_1 or evidence_id_2).",
-    "evidence_id_1": "tables/val_tab_1603.tex",
-    "evidence_id_2": "tables/val_tab_0093.tex",
+    "evidence_id_1": "tables_png/dev/val_tab_1603.png",
+    "evidence_id_2": "tables_png/dev/val_tab_0093.png",
     "label": "evidence_id_2",
     "claim": "The remaining prompts types ( Discourse, Mask ) are comparable to Corpus .",
     "context": "To further analyze the outputs, we calculate the perplexity (PPL) of the generated predictions to determine their plausibility (Wilcox et al., 2020 ) . Here, we choose the model with the best \\textit{WHR}_{5} score on the MKR-NQ benchmark, and calculate the mean perplexity over all queries for each prompt type (5 completions for each query). PPL is calculated as the exponentiated average negative log-likelihood of a sequence, with exponent base e . As a point of reference, we calculated the average perplexity of the provided completion of the original non-negated dataset (denoted Corpus ). From the reported perplexities ( Table 3 ), we can see that Default output are the most plausible (with PPL markedly lower than Corpus ), while Contrasting is the least natural.",
