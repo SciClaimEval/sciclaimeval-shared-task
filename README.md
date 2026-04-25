@@ -75,6 +75,23 @@ python3 run_eval.py --task task2
 python3 run_eval.py --task task1 --ground_truth_task1 path/to/gt.json --pred_task1 path/to/pred.json
 ```
 
+
+
+## Reproduce Results
+### Task 1: Claim Label Prediction Task
+
+Please download our prediction files [here](https://www.dropbox.com/scl/fi/33tjg4y7cpswkkthfv404/outputs_task1.zip?rlkey=xns7reoz6qen7isooljgc6wi3&st=mc3jmrp7&dl=0).
+
+Then run the following code:
+
+```bash
+python3 reproduce_all_models_task1.py
+```
+
+### Task 2: Claim Evidence Prediction Task
+
+TBA
+
 ## Note on License Information
 The dataset is licensed under CC BY 4.0; however, individual samples may have their own licenses.
 

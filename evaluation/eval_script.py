@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 from typing import List, Dict, Union
-from sklearn.metrics import precision_recall_fscore_support
+from sklearn.metrics import precision_recall_fscore_support, accuracy_score, confusion_matrix
 
 
 def evaluate_claim_verification(
@@ -154,4 +154,34 @@ def eval_task_2_accuracy(
         "total": f"{total}"
     }
 
-    
+
+def evaluate_claim_verification(predictions, ground_truth, labels = ["Supported", "Refuted"]):
+    """Original evaluation function"""
+    precision, recall, f1, _ = precision_recall_fscore_support(
+        ground_truth,
+        predictions,
+        labels=labels,
+        average='macro',
+        zero_division=0
+    )
+
+    acc = accuracy_score(
+        ground_truth,
+        predictions
+    )
+
+    # Standard [[TP, FP], [FN, TN]] binary confusion matrix
+    mcm = confusion_matrix(
+        ground_truth,
+        predictions,
+        labels=labels
+    )
+
+    return {
+        "precision": f"{precision * 100:.1f}",
+        "recall": f"{recall * 100:.1f}",
+        "macro_f1": f"{f1 * 100:.1f}",
+        "accuracy": f"{acc * 100:.1f}",
+        "confusion_matrix": mcm.tolist()
+    }
+
