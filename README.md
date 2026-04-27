@@ -90,7 +90,13 @@ python3 reproduce_all_models_task1.py
 
 ### Task 2: Claim Evidence Prediction Task
 
-TBA
+Please download our prediction files [here](https://www.dropbox.com/scl/fi/8clm6ha0qc7zbx30f1m0l/outputs_task2.zip?rlkey=uxrw1xqidz789lx6amuy0glu5&st=i765heef&dl=0).
+
+Then run the following code:
+
+```bash
+python3 reproduce_all_models_task2.py
+```
 
 ## Note on License Information
 The dataset is licensed under CC BY 4.0; however, individual samples may have their own licenses.
