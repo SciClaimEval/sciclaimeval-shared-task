@@ -80,7 +80,7 @@ python3 run_eval.py --task task1 --ground_truth_task1 path/to/gt.json --pred_tas
 ## Reproduce Results
 ### Task 1: Claim Label Prediction Task
 
-Please download our prediction files [here](https://www.dropbox.com/scl/fi/33tjg4y7cpswkkthfv404/outputs_task1.zip?rlkey=xns7reoz6qen7isooljgc6wi3&st=mc3jmrp7&dl=0).
+Please download our prediction files [here](https://www.dropbox.com/scl/fi/y92n8aiaf52ypye5mqjru/outputs_task1.zip?rlkey=bf8qf7k19sl6w3ocuo80hwkq1&st=8cxzhi68&dl=0).
 
 Then run the following code:
 
