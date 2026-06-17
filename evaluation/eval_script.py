@@ -21,11 +21,40 @@ def evaluate_claim_verification(
         zero_division=0
     )
 
+    acc = accuracy_score(
+        ground_truth,
+        predictions
+    )
+
+    tn, fp, fn, tp = confusion_matrix(
+        ground_truth,
+        predictions,
+        labels=labels
+    ).ravel()
+
     return {
-        "precision": f"{precision * 100:.1f}",
-        "recall": f"{recall * 100:.1f}",
-        "macro_f1": f"{f1 * 100:.1f}"
+        "precision": f"{precision * 100:.2f}",
+        "recall": f"{recall * 100:.2f}",
+        "macro_f1": f"{f1 * 100:.2f}",
+        "accuracy": f"{acc * 100:.2f}",
+        "confusion_matrix": [[int(tp), int(fn)], [int(fp), int(tn)]]
     }
+
+def eval_task_1_individual_data(
+    pred_dic: Dict,
+    gold_listdic: Dict
+) -> Dict[str, str]:
+    predictions, ground_truth = [], []
+
+    for item in gold_listdic:
+        cur_id = item["claim_id"]
+        if cur_id not in pred_dic:
+            print(f"Missing prediction for ID {cur_id}")
+            continue
+        predictions.append(pred_dic[cur_id])
+        ground_truth.append(item["label"])
+
+    return evaluate_claim_verification(predictions, ground_truth)
 
 
 def eval_task_1_individual(
@@ -43,35 +72,13 @@ def eval_task_1_individual(
     with open(gold_file, encoding="utf-8") as f:
         gold_listdic = json.load(f)
 
-    predictions, ground_truth = [], []
-
-    for item in gold_listdic:
-        cur_id = item["claim_id"]
-        if cur_id not in pred_dic:
-            print(f"Missing prediction for ID {cur_id}")
-            continue
-        predictions.append(pred_dic[cur_id])
-        ground_truth.append(item["label"])
-
-    return evaluate_claim_verification(predictions, ground_truth)
+    return eval_task_1_individual(pred_dic, gold_listdic)
 
 
-def eval_task_1_pair(
-    prediction_file: Union[str, Path],
-    gold_file: Union[str, Path]
+def eval_task_1_pair_data(
+    pred_dic: Dict,
+    gold_listdic: Dict
 ) -> Dict[str, str]:
-    """
-    Evaluate pair accuracy: all samples with the same pair_id must be correct to count as 1.
-    """
-    with open(prediction_file, encoding="utf-8") as f:
-        pred_listdic = json.load(f)
-
-    # Build a dict: {id: pred_label}
-    pred_dic = {item["claim_id"]: item["pred_label"] for item in pred_listdic}
-
-    with open(gold_file, encoding="utf-8") as f:
-        gold_listdic = json.load(f)
-
     # Group items by pair_id
     pair_groups = {}
     
@@ -111,11 +118,53 @@ def eval_task_1_pair(
     pair_accuracy = (correct_pairs / total_pairs * 100) if total_pairs > 0 else 0.0
     
     return {
-        "pair_accuracy": f"{pair_accuracy:.1f}",
+        "pair_accuracy": f"{pair_accuracy:.2f}",
         "correct_pairs": f"{correct_pairs}",
         "total_pairs": f"{total_pairs}"
     }
 
+def eval_task_1_pair(
+    prediction_file: Union[str, Path],
+    gold_file: Union[str, Path]
+) -> Dict[str, str]:
+    """
+    Evaluate pair accuracy: all samples with the same pair_id must be correct to count as 1.
+    """
+    with open(prediction_file, encoding="utf-8") as f:
+        pred_listdic = json.load(f)
+
+    # Build a dict: {id: pred_label}
+    pred_dic = {item["claim_id"]: item["pred_label"] for item in pred_listdic}
+
+    with open(gold_file, encoding="utf-8") as f:
+        gold_listdic = json.load(f)
+
+    return eval_task_1_pair_data(pred_dic, gold_listdic)
+
+def eval_task_2_accuracy_data(
+    pred_dic: Dict,
+    gold_listdic: Dict
+) -> Dict[str, str]:
+    predictions, ground_truth = [], []
+
+    for item in gold_listdic:
+        cur_id = item["sample_id"]
+        if cur_id not in pred_dic:
+            # print(f"Missing prediction for ID {cur_id}")
+            continue
+        predictions.append(pred_dic[cur_id])
+        ground_truth.append(item["label"])
+    
+    # Calculate accuracy
+    correct = sum(1 for pred, gold in zip(predictions, ground_truth) if pred == gold)
+    total = len(predictions)
+    accuracy = (correct / total * 100) if total > 0 else 0.0
+    
+    return {
+        "accuracy": f"{accuracy:.2f}",
+        "correct": f"{correct}",
+        "total": f"{total}"
+    }
 
 def eval_task_2_accuracy(
     prediction_file: Union[str, Path],
@@ -133,55 +182,4 @@ def eval_task_2_accuracy(
     with open(gold_file, encoding="utf-8") as f:
         gold_listdic = json.load(f)
 
-    predictions, ground_truth = [], []
-
-    for item in gold_listdic:
-        cur_id = item["sample_id"]
-        if cur_id not in pred_dic:
-            print(f"Missing prediction for ID {cur_id}")
-            continue
-        predictions.append(pred_dic[cur_id])
-        ground_truth.append(item["label"])
-    
-    # Calculate accuracy
-    correct = sum(1 for pred, gold in zip(predictions, ground_truth) if pred == gold)
-    total = len(predictions)
-    accuracy = (correct / total * 100) if total > 0 else 0.0
-    
-    return {
-        "accuracy": f"{accuracy:.1f}",
-        "correct": f"{correct}",
-        "total": f"{total}"
-    }
-
-
-def evaluate_claim_verification(predictions, ground_truth, labels = ["Supported", "Refuted"]):
-    """Original evaluation function"""
-    precision, recall, f1, _ = precision_recall_fscore_support(
-        ground_truth,
-        predictions,
-        labels=labels,
-        average='macro',
-        zero_division=0
-    )
-
-    acc = accuracy_score(
-        ground_truth,
-        predictions
-    )
-
-    # Standard [[TP, FP], [FN, TN]] binary confusion matrix
-    mcm = confusion_matrix(
-        ground_truth,
-        predictions,
-        labels=labels
-    )
-
-    return {
-        "precision": f"{precision * 100:.1f}",
-        "recall": f"{recall * 100:.1f}",
-        "macro_f1": f"{f1 * 100:.1f}",
-        "accuracy": f"{acc * 100:.1f}",
-        "confusion_matrix": mcm.tolist()
-    }
-
+    return eval_task_2_accuracy_data(pred_dic, gold_listdic)
